@@ -1,0 +1,13 @@
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  discordId String @id @unique
+  balance   Int    @default(5000)
+}
