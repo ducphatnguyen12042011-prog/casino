@@ -1,9 +1,11 @@
 {
-  "name": "discord-casino",
+  "name": "discord-casino-full",
   "version": "1.0.0",
+  "main": "bot_taixiu.js",
   "dependencies": {
     "@prisma/client": "^5.0.0",
     "discord.js": "^14.11.0",
+    "axios": "^1.4.0",
     "dotenv": "^16.3.1",
     "prisma": "^5.0.0"
   },
