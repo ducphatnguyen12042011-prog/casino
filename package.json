@@ -1,7 +1,6 @@
 {
-  "name": "discord-bot-all-in-one",
+  "name": "verdict-bot",
   "version": "1.0.0",
-  "description": "Hệ thống Bot Cá Độ",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
