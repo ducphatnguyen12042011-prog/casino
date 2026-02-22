@@ -2,8 +2,9 @@
   "name": "verdict-bot",
   "version": "1.0.0",
   "main": "index.js",
-  "scripts": {
-    "start": "node index.js",
+"scripts": {
+  "start": "npx prisma db push && node index.js"
+}
     "postinstall": "npx prisma generate"
   },
   "dependencies": {
