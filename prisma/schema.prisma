@@ -1,3 +1,4 @@
+// 1. Cấu hình kết nối Database
 datasource db {
   provider = "mysql"
   url      = env("DATABASE_URL")
@@ -7,7 +8,20 @@ generator client {
   provider = "prisma-client-js"
 }
 
+// 2. Bảng User: Lưu trữ túi tiền chung cho tất cả các con bot
 model User {
   discordId String @id @unique
-  balance   Int    @default(5000)
+  balance   Int    @default(5000) // Tặng 5000 xu khi mới bắt đầu
+  updatedAt DateTime @updatedAt
+}
+
+// 3. Bảng Bet: Lưu trữ lịch sử cược bóng đá (Dành cho bot cá độ)
+model Bet {
+  id        Int      @id @default(autoincrement())
+  discordId String
+  matchId   Int      // ID trận đấu lấy từ Football-Data.org
+  amount    Int      // Số tiền đặt cược
+  choice    String   // Dự đoán: "HOME_TEAM", "AWAY_TEAM", hoặc "DRAW"
+  status    String   @default("PENDING") // Trạng thái: PENDING (Chờ), WIN (Thắng), LOSS (Thua)
+  createdAt DateTime @default(now())
 }
