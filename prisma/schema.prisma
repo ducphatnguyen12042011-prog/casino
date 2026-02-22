@@ -1,4 +1,4 @@
-// 1. Cấu hình kết nối
+// 1. Cấu hình kết nối Database
 datasource db {
   provider = "mysql"
   url      = env("DATABASE_URL")
@@ -8,29 +8,38 @@ generator client {
   provider = "prisma-client-js"
 }
 
-// 2. Bảng User: Lưu trữ túi tiền chung và thông tin người chơi
+// 2. Bảng User: Lưu trữ tiền tệ và thông tin người chơi
 model User {
   discordId String   @id @unique
-  balance   Int      @default(5000) // Tặng 5000 xu cho người mới
+  balance   Int      @default(5000) // Tặng 5000 xu khởi nghiệp cho người mới
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
-// 3. Bảng Bet: Lưu trữ lịch sử cược bóng đá (Có Odds và Trạng thái)
+// 3. Bảng Bet: Lưu trữ tất cả các vé cược (Cá độ bóng đá)
 model Bet {
   id        Int      @id @default(autoincrement())
   discordId String
   matchId   Int      // ID trận đấu từ Football-Data.org
   amount    Int      // Số tiền đặt cược
-  choice    String   // "HOME_TEAM", "AWAY_TEAM", hoặc "DRAW"
-  odds      Float    @default(1.9) // Tỷ lệ cược lúc đặt (ví dụ: 1.85, 2.5)
-  status    String   @default("PENDING") // PENDING (Đang chờ), WIN (Thắng), LOSS (Thua)
+  choice    String   // "HOME", "AWAY", "OVER", "UNDER"
+  hcap      Float    // Mức chấp hoặc mức tài xỉu lúc cược (để đối chiếu khi trả thưởng)
+  status    String   @default("PENDING") // PENDING, WIN, LOSS, DRAW, CANCELLED
   createdAt DateTime @default(now())
 }
 
-// 4. Bảng Item: Danh sách sản phẩm trong Shop do Admin thêm vào
+// 4. Bảng MatchConfig: Dành cho Admin chỉnh sửa kèo thủ công (!setkeo)
+model MatchConfig {
+  matchId   Int     @id
+  hcap      Float   @default(0.5) // Kèo chấp do Admin set
+  total     Float   @default(2.5) // Kèo Tài/Xỉu do Admin set
+  isLocked  Boolean @default(false) // Admin có thể khóa trận đấu thủ công
+  updatedAt DateTime @updatedAt
+}
+
+// 5. Bảng Item: Danh sách sản phẩm trong Shop (!additem)
 model Item {
   id    Int    @id @default(autoincrement())
-  name  String @unique // Tên sản phẩm (ví dụ: TheDoiTen)
-  price Int    // Giá tiền để đổi
+  name  String @unique // Tên sản phẩm (ví dụ: "Thẻ đổi tên")
+  price Int    // Giá Cash
 }
