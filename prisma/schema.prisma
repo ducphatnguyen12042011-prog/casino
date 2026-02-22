@@ -1,4 +1,3 @@
-// 1. Cấu hình kết nối Database
 datasource db {
   provider = "mysql"
   url      = env("DATABASE_URL")
@@ -8,38 +7,38 @@ generator client {
   provider = "prisma-client-js"
 }
 
-// 2. Bảng User: Lưu trữ tiền tệ và thông tin người chơi
+// Bảng User: Lưu trữ tiền tệ Verdict Cash
 model User {
   discordId String   @id @unique
-  balance   Int      @default(5000) // Tặng 5000 xu khởi nghiệp cho người mới
+  balance   Int      @default(5000) // Khởi tạo 5000 Verdict Cash
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
-// 3. Bảng Bet: Lưu trữ tất cả các vé cược (Cá độ bóng đá)
+// Bảng Bet: Lưu trữ các vé cược bóng đá
 model Bet {
   id        Int      @id @default(autoincrement())
   discordId String
-  matchId   Int      // ID trận đấu từ Football-Data.org
-  amount    Int      // Số tiền đặt cược
-  choice    String   // "HOME", "AWAY", "OVER", "UNDER"
-  hcap      Float    // Mức chấp hoặc mức tài xỉu lúc cược (để đối chiếu khi trả thưởng)
-  status    String   @default("PENDING") // PENDING, WIN, LOSS, DRAW, CANCELLED
+  matchId   Int
+  amount    Int
+  choice    String   // HOME, AWAY, OVER, UNDER
+  hcap      Float    // Mức chấp/Tài xỉu tại thời điểm cược
+  status    String   @default("PENDING") // WIN, LOSS, DRAW, PENDING
   createdAt DateTime @default(now())
 }
 
-// 4. Bảng MatchConfig: Dành cho Admin chỉnh sửa kèo thủ công (!setkeo)
+// Bảng MatchConfig: Admin thiết lập kèo thủ công
 model MatchConfig {
-  matchId   Int     @id
-  hcap      Float   @default(0.5) // Kèo chấp do Admin set
-  total     Float   @default(2.5) // Kèo Tài/Xỉu do Admin set
-  isLocked  Boolean @default(false) // Admin có thể khóa trận đấu thủ công
+  matchId   Int      @id
+  hcap      Float    @default(0.5)
+  total     Float    @default(2.5)
+  isLocked  Boolean  @default(false)
   updatedAt DateTime @updatedAt
 }
 
-// 5. Bảng Item: Danh sách sản phẩm trong Shop (!additem)
+// Bảng Item: Sản phẩm trong Shop
 model Item {
   id    Int    @id @default(autoincrement())
-  name  String @unique // Tên sản phẩm (ví dụ: "Thẻ đổi tên")
-  price Int    // Giá Cash
+  name  String @unique
+  price Int    // Giá tính bằng Verdict Cash
 }
