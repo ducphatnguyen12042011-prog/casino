@@ -1,23 +1,22 @@
-// 1. Cấu hình kết nối Database (Dành cho MySQL)
+// 1. Cấu hình kết nối Database
 datasource db {
   provider = "mysql"
   url      = env("DATABASE_URL")
 }
 
-// 2. Generator Client cho Node.js
 generator client {
   provider = "prisma-client-js"
 }
 
 // --- CÁC MODEL DỮ LIỆU ---
 
-// Bảng User: Đã hợp nhất và thêm STK + Profit
+// Model User duy nhất (Đã gộp STK và Profit)
 model User {
   id        String   @id @default(uuid())
   discordId String   @unique
   balance   Int      @default(5000)
-  profit    Int      @default(0)        // Lưu tiền lời cược/giao dịch
-  stk       String?  @unique           // Số tài khoản ngân hàng Verdict
+  profit    Int      @default(0)        // Tiền lời
+  stk       String?  @unique           // Số tài khoản Verdict
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -25,36 +24,35 @@ model User {
   bets      Bet[]
 }
 
-// Bảng Transaction: Lưu lịch sử giao dịch chi tiết
+// Lịch sử giao dịch chi tiết
 model Transaction {
   id        String   @id @default(uuid())
-  userId    String   // Discord ID của người thực hiện/nhận
-  type      String   // NAP, TRU, CHUYEN, NHAN, CUOC, THANG
+  userId    String   
+  type      String   // NAP, TRU, CHUYEN, NHAN...
   amount    Int      
   reason    String?  @db.VarChar(500)
   createdAt DateTime @default(now())
 
-  @@index([userId]) // Tối ưu tốc độ tìm kiếm
+  @@index([userId])
 }
 
-// Bảng Bet: Lưu trữ các vé cược bóng đá
+// Vé cược bóng đá
 model Bet {
   id        String   @id @default(uuid())
   amount    Int
-  choice    String   // Ví dụ: HOME, AWAY, OVER, UNDER
+  choice    String   
   hcap      Float?   
   status    String   @default("PENDING") 
   matchId   Int?     
   createdAt DateTime @default(now())
 
-  // Thiết lập quan hệ với User thông qua discordId
   user      User     @relation(fields: [discordId], references: [discordId])
   discordId String
 
   @@index([discordId])
 }
 
-// Bảng MatchConfig: Cấu hình kèo trận đấu cho Admin
+// Cấu hình trận đấu cho Admin
 model MatchConfig {
   id        String   @id @default(uuid())
   matchId   Int      @unique
@@ -64,12 +62,10 @@ model MatchConfig {
   updatedAt DateTime @updatedAt
 }
 
-// Bảng Item: Danh sách vật phẩm trong cửa hàng (Shop)
+// Cửa hàng vật phẩm
 model Item {
   id          String  @id @default(uuid())
   name        String  @unique
   price       Int     
   description String? @db.VarChar(500)
-}
-  createdAt DateTime @default(now())
 }
