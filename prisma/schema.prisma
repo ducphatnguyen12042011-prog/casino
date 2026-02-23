@@ -10,13 +10,13 @@ generator client {
 
 // --- CÁC MODEL DỮ LIỆU ---
 
-// Model User duy nhất (Đã gộp STK và Profit)
+// Model User duy nhất - Đã gộp STK và Profit
 model User {
   id        String   @id @default(uuid())
   discordId String   @unique
   balance   Int      @default(5000)
-  profit    Int      @default(0)        // Tiền lời
-  stk       String?  @unique           // Số tài khoản Verdict
+  profit    Int      @default(0)        // Tiền lời cược
+  stk       String?  @unique           // Số tài khoản Verdict Banking
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
