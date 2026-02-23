@@ -1,10 +1,9 @@
 {
-  "name": "verdict-bot",
+  "name": "discord-bot-all-in-one",
   "version": "1.0.0",
   "main": "index.js",
-"scripts": {
-  "start": "npx prisma db push && node index.js"
-}
+  "scripts": {
+    "start": "npx prisma db push && node index.js",
     "postinstall": "npx prisma generate"
   },
   "dependencies": {
