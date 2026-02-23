@@ -1,5 +1,5 @@
 datasource db {
-  provider = "mysql"
+  provider = "mongodb"
   url      = env("DATABASE_URL")
 }
 
@@ -9,15 +9,16 @@ generator client {
 
 // Bảng User: Lưu trữ tiền tệ Verdict Cash
 model User {
-  discordId String   @id @unique
-  balance   Int      @default(5000) // Khởi tạo 5000 Verdict Cash
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  discordId String   @unique
+  balance   Int      @default(5000) 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
 // Bảng Bet: Lưu trữ các vé cược bóng đá
 model Bet {
-  id        Int      @id @default(autoincrement())
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
   discordId String
   matchId   Int
   amount    Int
@@ -29,7 +30,8 @@ model Bet {
 
 // Bảng MatchConfig: Admin thiết lập kèo thủ công
 model MatchConfig {
-  matchId   Int      @id
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  matchId   Int      @unique
   hcap      Float    @default(0.5)
   total     Float    @default(2.5)
   isLocked  Boolean  @default(false)
@@ -38,7 +40,7 @@ model MatchConfig {
 
 // Bảng Item: Sản phẩm trong Shop
 model Item {
-  id    Int    @id @default(autoincrement())
+  id    String @id @default(auto()) @map("_id") @db.ObjectId
   name  String @unique
   price Int    // Giá tính bằng Verdict Cash
 }
