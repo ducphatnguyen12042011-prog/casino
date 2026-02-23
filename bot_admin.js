@@ -6,7 +6,7 @@ const client = new Client({
 });
 
 const ADMIN_ROLE_ID = "1465374336214106237"; 
-const LOG_CHANNEL_ID = "1475501156267462676"; 
+const LOG_CHANNEL_ID = "1475501156267462676"; // Kênh sẽ gửi log giao dịch
 
 // --- HÀM TỰ ĐỘNG TRẢ THƯỞNG & LƯU LỊCH SỬ ---
 async function settleMatch(matchId, scoreHome, scoreAway) {
@@ -19,19 +19,16 @@ async function settleMatch(matchId, scoreHome, scoreAway) {
 
         if (isWin) {
             const winAmt = Math.floor(bet.amount * 1.95);
-            // Cập nhật số dư và tiền lời
             await prisma.user.update({
                 where: { discordId: bet.discordId },
                 data: { balance: { increment: winAmt }, profit: { increment: winAmt - bet.amount } }
             });
             await prisma.bet.update({ where: { id: bet.id }, data: { status: 'WIN' } });
-            // Ghi lịch sử thắng
             await prisma.transaction.create({
                 data: { userId: bet.discordId, type: "THANG", amount: winAmt, reason: `Thắng cược trận ${matchId}` }
             });
         } else {
             await prisma.bet.update({ where: { id: bet.id }, data: { status: 'LOSS' } });
-            // Ghi lịch sử thua
             await prisma.transaction.create({
                 data: { userId: bet.discordId, type: "THUA", amount: bet.amount, reason: `Thua cược trận ${matchId}` }
             });
@@ -49,7 +46,7 @@ client.on('messageCreate', async (msg) => {
     const command = args[0].toLowerCase();
     const isAdmin = msg.member.roles.cache.has(ADMIN_ROLE_ID);
 
-    // 1. LỆNH !VI (Giao diện đẹp + Lịch sử)
+    // 1. LỆNH !VI (Xem ví & Lịch sử)
     if (command === '!vi') {
         const target = msg.mentions.users.first() || msg.author;
         try {
@@ -65,7 +62,7 @@ client.on('messageCreate', async (msg) => {
             const bal = user?.balance || 5000;
             const history = logs.length > 0 
                 ? logs.map(l => {
-                    const icon = (l.type === "NAP" || l.type === "NHAN" || l.type === "THANG") ? "🟢" : "🔴";
+                    const icon = (l.type === "NAP" || l.type === "NHAN" || l.type === "THANG" || l.type === "CHUYEN") ? (l.type === "CHUYEN" ? "🔴" : "🟢") : "🔴";
                     const time = `<t:${Math.floor(l.createdAt.getTime() / 1000)}:R>`;
                     return `${icon} **${l.type}**: \`${l.amount.toLocaleString()}\` VC | ${time}`;
                 }).join("\n")
@@ -89,7 +86,53 @@ client.on('messageCreate', async (msg) => {
         } catch (e) { console.error(e); }
     }
 
-    // 2. LỆNH !KETQUA (Admin trả thưởng)
+    // 2. LỆNH !CHUYEN (Chuyển tiền qua Tag)
+    if (command === '!chuyen') {
+        const target = msg.mentions.users.first();
+        const amount = parseInt(args[2]);
+
+        if (!target || isNaN(amount) || amount < 100) return msg.reply("⚠️ **HD:** `!chuyen @user [số tiền]` (Tối thiểu 100 VC)");
+        if (target.id === msg.author.id) return msg.reply("❌ Bạn không thể tự chuyển cho chính mình.");
+
+        const sender = await prisma.user.findUnique({ where: { discordId: msg.author.id } });
+        if (!sender || sender.balance < amount) return msg.reply("❌ Số dư không đủ để thực hiện giao dịch.");
+
+        await prisma.$transaction([
+            prisma.user.update({ where: { discordId: msg.author.id }, data: { balance: { decrement: amount } } }),
+            prisma.user.upsert({
+                where: { discordId: target.id },
+                update: { balance: { increment: amount } },
+                create: { discordId: target.id, balance: 5000 + amount }
+            }),
+            prisma.transaction.create({ data: { userId: msg.author.id, type: "CHUYEN", amount, reason: `Chuyển cho ${target.username}` } }),
+            prisma.transaction.create({ data: { userId: target.id, type: "NHAN", amount, reason: `Nhận từ ${msg.author.username}` } })
+        ]);
+
+        msg.reply(`✅ Giao dịch thành công! Đã gửi **${amount.toLocaleString()}** VC đến ${target}.`);
+    }
+
+    // 3. LỆNH !TOP (Bảng xếp hạng đại gia)
+    if (command === '!top') {
+        const topUsers = await prisma.user.findMany({
+            orderBy: { balance: 'desc' },
+            take: 10
+        });
+
+        const leaderboard = topUsers.map((u, index) => {
+            const crown = index === 0 ? "🥇" : index === 1 ? "🥈" : index === 2 ? "🥉" : "🔹";
+            return `${crown} **Top ${index + 1}**: <@${u.discordId}> - \`${u.balance.toLocaleString()}\` VC`;
+        }).join("\n");
+
+        const embed = new EmbedBuilder()
+            .setTitle("🏆 BẢNG XẾP HẠNG ĐẠI GIA VERDICT")
+            .setColor("#f1c40f")
+            .setDescription(leaderboard || "Chưa có dữ liệu.")
+            .setTimestamp();
+
+        msg.reply({ embeds: [embed] });
+    }
+
+    // 4. LỆNH !KETQUA (Admin trả thưởng)
     if (command === '!ketqua' && isAdmin) {
         const mId = args[1];
         const sH = parseInt(args[2]);
@@ -97,10 +140,10 @@ client.on('messageCreate', async (msg) => {
         if (!mId || isNaN(sH) || isNaN(sA)) return msg.reply("⚠️ HD: `!ketqua [ID] [Home] [Away]`");
 
         await settleMatch(mId, sH, sA);
-        msg.reply(`✅ Đã chốt trận \`${mId}\` (**${sH}-${sA}**). Tiền đã được trả!`);
+        msg.reply(`✅ Đã chốt trận \`${mId}\` (**${sH}-${sA}**). Tiền thưởng đã được phát tự động!`);
     }
 
-    // 3. LỆNH !NAP (Admin)
+    // 5. LỆNH !NAP (Admin)
     if (command === '!nap' && isAdmin) {
         const target = msg.mentions.users.first();
         const amount = parseInt(args[2]);
@@ -118,5 +161,4 @@ client.on('messageCreate', async (msg) => {
     }
 });
 
-// LOGIN AN TOÀN
 client.login(process.env.DISCORD_TOKEN_ECONOMY).catch(e => console.error("❌ Token sai!"));
