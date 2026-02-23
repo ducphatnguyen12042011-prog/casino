@@ -13,14 +13,17 @@ const client = new Client({
     ] 
 });
 
-// --- 1. CẤU HÌNH ---
+// --- CẤU HÌNH HỆ THỐNG ---
 const TOKEN = process.env.DISCORD_TOKEN;
 const API_KEY = process.env.FOOTBALL_API_KEY;
-const ID_KENH_CUOC = '1474793205299155135';
-const ID_KENH_LIVE = '1474672512708247582';
-const ALLOWED_LEAGUES = ['PL', 'PD', 'CL']; // Ngoại hạng Anh, La Liga, C1
+const ID_KENH_CUOC = '1475439630274007121'; 
+const ID_KENH_LIVE = '1474793205299155135'; 
+const ALLOWED_LEAGUES = ['PL', 'PD', 'CL', 'BL1', 'SA']; 
 
-// --- 2. HỖ TRỢ LOGIC (SMART HANDICAP) ---
+// Bộ nhớ tạm cho lệnh Admin chỉnh cầu
+const adminOverride = new Map();
+
+// --- 1. SMART HANDICAP (LOGIC TỪ BẢN PYTHON) ---
 async function getSmartHcap(compCode, homeId, awayId) {
     try {
         const res = await axios.get(`https://api.football-data.org/v4/competitions/${compCode}/standings`, {
@@ -30,16 +33,14 @@ async function getSmartHcap(compCode, homeId, awayId) {
         const hRank = table.find(t => t.team.id === homeId)?.position || 10;
         const aRank = table.find(t => t.team.id === awayId)?.position || 10;
         const diff = aRank - hRank;
-        // Tính kèo chấp dựa trên chênh lệch hạng
         return Math.round((diff / 4) * 0.25 * 4) / 4 || 0.5;
-    } catch (e) {
-        return 0.5;
-    }
+    } catch { return 0.5; }
 }
 
-// --- 3. LOOP CẬP NHẬT KÊNH CƯỢC & LIVE ---
-async function updateScoreboard() {
+// --- 2. HÀM CẬP NHẬT TRẬN ĐẤU (AUTO-POST) ---
+async function updateFootballBoard() {
     try {
+        console.log("⚽ Đang cập nhật dữ liệu bóng đá...");
         const res = await axios.get('https://api.football-data.org/v4/matches', {
             headers: { 'X-Auth-Token': API_KEY }
         });
@@ -49,152 +50,117 @@ async function updateScoreboard() {
         const chLive = await client.channels.fetch(ID_KENH_LIVE);
 
         // Làm sạch tin nhắn cũ của bot
-        const oldBetMsgs = await chCuoc.messages.fetch({ limit: 20 });
-        oldBetMsgs.filter(m => m.author.id === client.user.id).forEach(m => m.delete().catch(() => {}));
+        const oldBet = await chCuoc.messages.fetch({ limit: 50 });
+        const botBet = oldBet.filter(m => m.author.id === client.user.id);
+        if (botBet.size > 0) await chCuoc.bulkDelete(botBet).catch(() => {});
 
-        const oldLiveMsgs = await chLive.messages.fetch({ limit: 10 });
-        oldLiveMsgs.filter(m => m.author.id === client.user.id).forEach(m => m.delete().catch(() => {}));
+        const oldLive = await chLive.messages.fetch({ limit: 20 });
+        const botLive = oldLive.filter(m => m.author.id === client.user.id);
+        if (botLive.size > 0) await chLive.bulkDelete(botLive).catch(() => {});
 
-        // Hiển thị trận sắp đá (Chỉ kèo chấp)
-        for (const m of matches.filter(x => x.status === 'TIMED').slice(0, 10)) {
+        // --- ĐĂNG KÈO CƯỢC ---
+        for (const m of matches.filter(x => x.status === 'TIMED').slice(0, 8)) {
             const hcap = await getSmartHcap(m.competition.code, m.homeTeam.id, m.awayTeam.id);
             const startTime = new Date(m.utcDate).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
 
             const embed = new EmbedBuilder()
                 .setTitle(`🏆 ${m.competition.name.toUpperCase()}`)
                 .setColor(0x3498db)
+                .setThumbnail(m.homeTeam.crest || m.competition.emblem)
                 .setDescription(`🏟️ **${m.homeTeam.name}** vs **${m.awayTeam.name}**\n🕒 Giờ đá: \`${startTime}\`\n━━━━━━━━━━━━\n⚖️ **Kèo Chấp**: \`${hcap > 0 ? '+' + hcap : hcap}\``)
-                .setFooter({ text: `ID Trận: ${m.id}` });
+                .setFooter({ text: `ID Trận: ${m.id} | Chấp dựa trên BXH thực tế` });
 
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId(`bet_chu_${m.id}_${hcap}`).setLabel('🏠 Chủ').setStyle(ButtonStyle.Primary),
                 new ButtonBuilder().setCustomId(`bet_khach_${m.id}_${-hcap}`).setLabel('✈️ Khách').setStyle(ButtonStyle.Danger)
             );
-
             await chCuoc.send({ embeds: [embed], components: [row] });
         }
 
-        // Hiển thị Live Score
-        const live = matches.filter(m => ['IN_PLAY', 'PAUSED', 'LIVE'].includes(m.status));
-        for (const m of live) {
+        // --- ĐĂNG LIVE SCORE ---
+        for (const m of matches.filter(x => ['IN_PLAY', 'PAUSED'].includes(x.status))) {
             const sc = m.score.fullTime;
-            const liveEmbed = new EmbedBuilder()
+            const liveEmb = new EmbedBuilder()
                 .setTitle(`🔴 LIVE: ${m.competition.name}`)
                 .setColor(0xe74c3c)
                 .addFields({ 
                     name: m.status === 'PAUSED' ? '☕ GIẢI LAO' : '⚽ ĐANG THI ĐẤU', 
                     value: `🏠 **${m.homeTeam.shortName}** \` ${sc.home} \` — \` ${sc.away} \` **${m.awayTeam.shortName}**` 
                 })
-                .setFooter({ text: `Cập nhật lúc: ${new Date().toLocaleTimeString('vi-VN')}` });
-            await chLive.send({ embeds: [liveEmbed] });
+                .setTimestamp();
+            await chLive.send({ embeds: [liveEmb] });
         }
-    } catch (e) {
-        console.error("Lỗi cập nhật bảng điểm:", e.message);
-    }
+        console.log("✅ Đã làm mới bảng kèo.");
+    } catch (e) { console.error("Lỗi cập nhật:", e.message); }
 }
 
-// --- 4. XỬ LÝ ĐẶT CƯỢC & GỬI DM ---
+// --- 3. LỆNH CHỈNH CẦU (ADMIN) ---
+client.on('messageCreate', async (msg) => {
+    if (msg.author.bot || !msg.content.startsWith('!')) return;
+
+    const args = msg.content.slice(1).trim().split(/ +/);
+    const command = args.shift().toLowerCase();
+
+    if (command === 'chinhcau' && msg.member.permissions.has('Administrator')) {
+        const matchId = args[0];
+        const side = args[1]?.toLowerCase();
+        if (!matchId || !['chu', 'khach'].includes(side)) {
+            return msg.reply("⚠️ Cú pháp: `!chinhcau [ID] [chu/khach]`");
+        }
+        adminOverride.set(matchId, side);
+        msg.reply(`🎯 **ADMIN ĐIỀU CẦU:** Trận \`#${matchId}\` sẽ thắng cửa **${side.toUpperCase()}**.`);
+    }
+});
+
+// --- 4. XỬ LÝ ĐẶT CƯỢC & DM BIÊN LAI ---
 client.on('interactionCreate', async (i) => {
     // Hiện Modal nhập tiền
     if (i.isButton() && i.customId.startsWith('bet_')) {
         const [_, side, mId, line] = i.customId.split('_');
-        
         const modal = new ModalBuilder().setCustomId(`modal_${side}_${mId}_${line}`).setTitle('🎫 PHIẾU CƯỢC');
-        const amtInput = new TextInputBuilder()
-            .setCustomId('amount')
-            .setLabel('Nhập số tiền muốn cược')
-            .setStyle(TextInputStyle.Short)
-            .setRequired(true);
-            
-        modal.addComponents(new ActionRowBuilder().addComponents(amtInput));
+        const input = new TextInputBuilder().setCustomId('amt').setLabel('Số tiền cược').setStyle(TextInputStyle.Short).setRequired(true);
+        modal.addComponents(new ActionRowBuilder().addComponents(input));
         await i.showModal(modal);
     }
 
-    // Xử lý nộp Modal
+    // Xử lý nộp tiền & Gửi DM
     if (i.isModalSubmit() && i.customId.startsWith('modal_')) {
         const [_, side, mId, line] = i.customId.split('_');
-        const amount = i.fields.getTextInputValue('amount');
+        const amount = i.fields.getTextInputValue('amt');
 
-        // Lưu vào Database (Prisma)
         await prisma.bet.create({
-            data: {
-                userId: i.user.id,
-                matchId: mId,
-                side: side,
-                amount: amount, // Lưu dạng string hoặc int tùy schema của bạn
-                handicap: parseFloat(line),
-                status: 'PENDING'
-            }
+            data: { userId: i.user.id, matchId: mId, side: side, amount: amount, handicap: parseFloat(line), status: 'PENDING' }
         });
 
-        await i.reply({ content: `✅ Đã ghi nhận lệnh cược! Kiểm tra DM để nhận biên lai.`, ephemeral: true });
+        await i.reply({ content: `✅ Cược thành công! Check DM nhận biên lai.`, ephemeral: true });
 
-        // Gửi vé vào DM (Hóa đơn)
+        // GỬI BIÊN LAI DM
         const ticket = new EmbedBuilder()
-            .setTitle("🧾 BIÊN LAI CƯỢC")
-            .setColor(0xf1c40f)
+            .setTitle("🎫 BIÊN LAI CƯỢC VERDICT")
+            .setColor(0xF1C40F)
+            .setThumbnail('https://i.imgur.com/8E9v69v.png')
             .addFields(
-                { name: "🆔 Trận", value: `#${mId}`, inline: true },
-                { name: "⚽ Cửa đặt", value: side.toUpperCase(), inline: true },
-                { name: "💰 Tiền cược", value: `\`${amount}\``, inline: true },
-                { name: "⚖️ Kèo chấp", value: `\`${line}\``, inline: true }
+                { name: '🆔 Mã trận', value: `\`#${mId}\``, inline: true },
+                { name: '🏟️ Cửa đặt', value: `**${side.toUpperCase() === 'CHU' ? 'CHỦ NHÀ' : 'KHÁCH'}**`, inline: true },
+                { name: '⚖️ Kèo chấp', value: `\`${line > 0 ? '+' + line : line}\``, inline: true },
+                { name: '💰 Tiền cược', value: `\`${parseInt(amount).toLocaleString()} xu\``, inline: true },
+                { name: '📅 Thời gian', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: false }
             )
-            .setTimestamp();
+            .setFooter({ text: 'Sử dụng biên lai này để đối soát khi có khiếu nại.' });
 
         await i.user.send({ embeds: [ticket] }).catch(() => {
-            i.followUp({ content: "⚠️ Bot không thể gửi DM cho bạn (Bạn có thể đang khóa DM).", ephemeral: true });
+            i.followUp({ content: "⚠️ Vui lòng mở DM để nhận biên lai lần sau!", ephemeral: true });
         });
     }
 });
-client.on('messageCreate', async (message) => {
-    // 1. Kiểm tra nếu tin nhắn là bot hoặc không bắt đầu bằng dấu !
-    if (message.author.bot || !message.content.startsWith('!')) return;
 
-    const args = message.content.slice(1).trim().split(/ +/);
-    const command = args.shift().toLowerCase();
-
-    // 2. Xử lý lệnh chinhcau
-    if (command === 'chinhcau') {
-        // Kiểm tra quyền Admin
-        if (!message.member.permissions.has('Administrator')) {
-            return message.reply('❌ Bạn không có quyền sử dụng lệnh này!');
-        }
-
-        // Kiểm tra cú pháp: !chinhcau [ID Trận] [Cửa thắng]
-        if (args.length < 2) {
-            return message.reply('⚠️ Sai cú pháp! Dùng: `!chinhcau [ID_Trận] [chu/khach]`\nVí dụ: `!chinhcau 412345 chu`');
-        }
-
-        const matchId = args[0];
-        const sideWin = args[1].toLowerCase();
-
-        // Kiểm tra cửa thắng hợp lệ
-        if (sideWin !== 'chu' && sideWin !== 'khach') {
-            return message.reply('❌ Cửa thắng phải là `chu` hoặc `khach`!');
-        }
-
-        // Lưu vào bộ nhớ tạm
-        adminOverride.set(matchId, sideWin);
-
-        // Tạo Embed thông báo cho chuyên nghiệp
-        const embed = new EmbedBuilder()
-            .setTitle('🎯 XÁC NHẬN ĐIỀU CẦU')
-            .setColor(0xff0000) // Màu đỏ cảnh báo
-            .addFields(
-                { name: '🆔 ID Trận đấu', value: `\`${matchId}\``, inline: true },
-                { name: '🚩 Cửa thắng ép buộc', value: `**${sideWin === 'chu' ? 'ĐỘI CHỦ NHÀ' : 'ĐỘI KHÁCH'}**`, inline: true }
-            )
-            .setFooter({ text: 'Kết quả thật từ API sẽ bị bỏ qua cho trận này.' })
-            .setTimestamp();
-
-        return message.reply({ embeds: [embed] });
-    }
-});
-// --- 5. KHỞI CHẠY ---
+// --- 5. RUN BOT ---
 client.once('ready', async () => {
-    console.log(`🚀 Bot Node.js đã sẵn sàng: ${client.user.tag}`);
-    await updateScoreboard(); // Chạy ngay lập tức khi bật
-    cron.schedule('*/2 * * * *', updateScoreboard); // Chạy mỗi 2 phút
+    console.log(`🚀 Bot đã online: ${client.user.tag}`);
+    // Đăng bài ngay khi bật bot
+    await updateFootballBoard();
+    // Lặp lại mỗi 2 phút
+    cron.schedule('*/2 * * * *', updateFootballBoard);
 });
 
 client.login(TOKEN);
