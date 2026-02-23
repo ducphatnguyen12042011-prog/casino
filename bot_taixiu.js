@@ -1,83 +1,157 @@
-const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType } = require('discord.js');
 const { getBalance, updateBalance } = require('./shared/economy');
 
 const client = new Client({ 
-    intents: [
-        GatewayIntentBits.Guilds, 
-        GatewayIntentBits.GuildMessages, 
-        GatewayIntentBits.MessageContent
-    ] 
+    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] 
 });
 
-// Biến lưu trữ lịch sử soi cầu (tạm thời trong bộ nhớ)
-let history = []; 
+// Cấu hình hệ thống
+let gameStatus = {
+    isOpening: false,
+    timeLeft: 0,
+    sessionID: 1475439630274007121n,
+    history: [], // Lưu kết quả: {total, result}
+    currentBets: new Map(), // userId => {tai: 0, xiu: 0}
+    mainMsg: null
+};
 
-client.on('messageCreate', async (msg) => {
-    if (msg.author.bot || !msg.content.startsWith('!taixiu')) return;
-
-    const args = msg.content.split(' ');
+// 1. Hàm vẽ bảng soi cầu siêu cấp
+function generateSoiCau() {
+    if (gameStatus.history.length === 0) return "Chưa có dữ liệu phiên.";
     
-    // Tính năng soi cầu: !taixiu check
-    if (args[1] === 'check' || args[1] === 'soicau') {
-        const historyText = history.length > 0 
-            ? history.map(r => r === 'tai' ? '🔴' : '⚪').join(' ') 
-            : "Chưa có dữ liệu phiên nào.";
-        
-        const embedSoiCau = new EmbedBuilder()
-            .setTitle("📊 Bảng Soi Cầu (10 phiên gần nhất)")
-            .setDescription(historyText)
-            .addFields({ name: 'Chú thích', value: '🔴: Tài | ⚪: Xỉu' })
-            .setColor('#f1c40f');
-            
-        return msg.reply({ embeds: [embedSoiCau] });
-    }
+    const icons = gameStatus.history.map(h => h.result === 'tai' ? '🔴' : '⚪').join(' ');
+    const countTai = gameStatus.history.filter(h => h.result === 'tai').length;
+    const countXiu = gameStatus.history.filter(h => h.result === 'xiu').length;
+    const tiLeTai = ((countTai / gameStatus.history.length) * 100).toFixed(0);
 
-    const bet = parseInt(args[1]);
-    const choice = args[2]?.toLowerCase();
+    return `📊 **Lịch sử 20 phiên:**\n${icons}\n\n📈 **Thống kê:** Tài: \`${countTai}\` | Xỉu: \`${countXiu}\` (Tỉ lệ Tài: \`${tiLeTai}%\`)`;
+}
 
-    if (isNaN(bet) || bet <= 0 || !['tai', 'xiu'].includes(choice)) {
-        return msg.reply("❌ **Cú pháp:** `!taixiu [tiền] [tai/xiu]` hoặc `!taixiu soicau` để xem lịch sử.");
-    }
+// 2. Tạo hàng nút bấm
+function createGameButtons(isDisabled = false) {
+    const row1 = new ActionRowBuilder().addComponents(
+        [1000, 5000, 10000, 50000, 100000].map(amt => 
+            new ButtonBuilder().setCustomId(`amt_${amt}`).setLabel(`+${amt.toLocaleString()}`).setStyle(ButtonStyle.Secondary).setDisabled(isDisabled)
+        )
+    );
 
-    const balance = await getBalance(msg.author.id);
-    if (balance < bet) return msg.reply("💸 Bạn không đủ tiền để tham gia ván này!");
+    const row2 = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('bet_tai').setLabel('ĐẶT TÀI').setStyle(ButtonStyle.Danger).setDisabled(isDisabled),
+        new ButtonBuilder().setCustomId('bet_xiu').setLabel('ĐẶT XỈU').setStyle(ButtonStyle.Primary).setDisabled(isDisabled),
+        new ButtonBuilder().setCustomId('clear').setLabel('XÓA CƯỢC').setStyle(ButtonStyle.Secondary).setDisabled(isDisabled),
+        new ButtonBuilder().setCustomId('soicau').setLabel('SOI CẦU').setStyle(ButtonStyle.Success)
+    );
 
-    // Trừ tiền cược
-    await updateBalance(msg.author.id, -bet);
+    return [row1, row2];
+}
 
-    // Lắc xúc xắc (3 viên 1-6)
-    const d1 = Math.floor(Math.random() * 6) + 1;
-    const d2 = Math.floor(Math.random() * 6) + 1;
-    const d3 = Math.floor(Math.random() * 6) + 1;
-    const total = d1 + d2 + d3;
+// 3. Logic nặn xúc xắc và trả thưởng
+async function resolveGame() {
+    const d = [Math.floor(Math.random()*6)+1, Math.floor(Math.random()*6)+1, Math.floor(Math.random()*6)+1];
+    const total = d[0] + d[1] + d[2];
     const result = total >= 11 ? 'tai' : 'xiu';
 
-    // Cập nhật lịch sử (giữ 10 kết quả gần nhất)
-    history.push(result);
-    if (history.length > 10) history.shift();
+    // Lưu lịch sử
+    gameStatus.history.push({ total, result });
+    if (gameStatus.history.length > 20) gameStatus.history.shift();
 
-    // Xử lý thắng thua
-    const isWin = choice === result;
-    const color = isWin ? '#2ecc71' : '#e74c3c'; // Xanh nếu thắng, Đỏ nếu thua
-    const winAmount = bet * 2;
+    // Hiệu ứng nặn
+    const embed = new EmbedBuilder().setTitle(`🎲 PHIÊN #${gameStatus.sessionID} - KẾT QUẢ`).setColor('#f1c40f');
+    
+    await gameStatus.mainMsg.edit({ embeds: [embed.setDescription('🎲 Đang lắc... 🕒')], components: [] });
+    
+    setTimeout(async () => {
+        await gameStatus.mainMsg.edit({ embeds: [embed.setDescription(`🎲 Kết quả: **${d[0]} - ${d[1]} - ${d[2]}**\n\n🎯 Tổng: **${total}** => **${result.toUpperCase()}**`)] });
+        
+        // Trả thưởng
+        for (let [userId, bet] of gameStatus.currentBets) {
+            const betAmount = result === 'tai' ? bet.tai : bet.xiu;
+            if (betAmount > 0) {
+                await updateBalance(userId, betAmount * 1.95); // Thắng x1.95
+            }
+        }
+        
+        gameStatus.sessionID++;
+        setTimeout(() => startNewRound(gameStatus.mainMsg.channel), 5000); // Nghỉ 5s rồi sang phiên mới
+    }, 3000);
+}
 
-    if (isWin) {
-        await updateBalance(msg.author.id, winAmount);
+// 4. Bắt đầu phiên mới
+async function startNewRound(channel) {
+    gameStatus.isOpening = true;
+    gameStatus.timeLeft = 40;
+    gameStatus.currentBets.clear();
+
+    const embed = new EmbedBuilder()
+        .setTitle(`🎮 TÀI XỈU ONLINE - PHIÊN #${gameStatus.sessionID}`)
+        .setColor('#2f3136')
+        .setDescription(`🕒 Thời gian cược: **${gameStatus.timeLeft}s**\n\n${generateSoiCau()}`)
+        .setFooter({ text: 'Hệ thống tự động khóa cược khi còn 5 giây' });
+
+    gameStatus.mainMsg = await channel.send({ embeds: [embed], components: createGameButtons() });
+
+    const timer = setInterval(async () => {
+        gameStatus.timeLeft -= 5;
+        if (gameStatus.timeLeft <= 5) {
+            gameStatus.isOpening = false;
+            clearInterval(timer);
+            await gameStatus.mainMsg.edit({ 
+                embeds: [embed.setDescription(`🛑 **ĐÃ KHÓA CƯỢC**\nĐang chờ kết quả...`).setColor('#e74c3c')],
+                components: createGameButtons(true) 
+            });
+            resolveGame();
+        } else {
+            await gameStatus.mainMsg.edit({ embeds: [embed.setDescription(`🕒 Thời gian cược: **${gameStatus.timeLeft}s**\n\n${generateSoiCau()}`)] });
+        }
+    }, 5000);
+}
+
+// 5. Xử lý tương tác nút bấm
+client.on('interactionCreate', async interaction => {
+    if (!interaction.isButton()) return;
+
+    const userId = interaction.user.id;
+    if (interaction.customId === 'soicau') {
+        return interaction.reply({ content: generateSoiCau(), ephemeral: true });
     }
 
-    // Tạo Embed kết quả
-    const resultEmbed = new EmbedBuilder()
-        .setTitle(isWin ? '🎉 BẠN ĐÃ THẮNG!' : '💀 BẠN ĐÃ THUA!')
-        .setColor(color)
-        .addFields(
-            { name: '🎲 Xúc xắc', value: `${d1} + ${d2} + ${d3} = **${total}**`, inline: true },
-            { name: '🎯 Kết quả', value: result.toUpperCase(), inline: true },
-            { name: '💰 Biến động', value: isWin ? `+${winAmount.toLocaleString()} xu` : `-${bet.toLocaleString()} xu`, inline: true }
-        )
-        .setFooter({ text: `Người chơi: ${msg.author.username} | Gõ !taixiu soicau để xem cầu` })
-        .setTimestamp();
+    if (!gameStatus.isOpening) return interaction.reply({ content: "Phiên đã đóng hoặc đang nặn!", ephemeral: true });
 
-    msg.reply({ embeds: [resultEmbed] });
+    let userBet = gameStatus.currentBets.get(userId) || { tai: 0, xiu: 0, temp: 0 };
+
+    if (interaction.customId.startsWith('amt_')) {
+        const val = parseInt(interaction.customId.split('_')[1]);
+        userBet.temp += val;
+        gameStatus.currentBets.set(userId, userBet);
+        return interaction.reply({ content: `💵 Đang chọn: **${userBet.temp.toLocaleString()}**. Bấm ĐẶT TÀI/XỈU để chốt.`, ephemeral: true });
+    }
+
+    if (interaction.customId === 'bet_tai' || interaction.customId === 'bet_xiu') {
+        if (userBet.temp <= 0) return interaction.reply({ content: "Vui lòng chọn số tiền trước!", ephemeral: true });
+        
+        const bal = await getBalance(userId);
+        if (bal < userBet.temp) return interaction.reply({ content: "Bạn không đủ số dư!", ephemeral: true });
+
+        await updateBalance(userId, -userBet.temp);
+        if (interaction.customId === 'bet_tai') userBet.tai += userBet.temp;
+        else userBet.xiu += userBet.temp;
+        
+        const totalBet = userBet.tai + userBet.xiu;
+        userBet.temp = 0; // Reset tiền tạm
+        gameStatus.currentBets.set(userId, userBet);
+        
+        return interaction.reply({ content: `✅ Đã đặt cược thành công! Tổng cược phiên này: **${totalBet.toLocaleString()}**`, ephemeral: true });
+    }
+
+    if (interaction.customId === 'clear') {
+        userBet.temp = 0;
+        gameStatus.currentBets.set(userId, userBet);
+        return interaction.reply({ content: "Đã xóa số tiền đang chọn.", ephemeral: true });
+    }
 });
 
-client.login(process.env.DISCORD_TOKEN_TAIXIU);
+client.on('messageCreate', m => {
+    if (m.content === '!taixiu start' && !gameStatus.mainMsg) startNewRound(m.channel);
+});
+
+client.login(process.env.DISCORD_TOKEN);
