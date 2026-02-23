@@ -146,7 +146,50 @@ client.on('interactionCreate', async (i) => {
         });
     }
 });
+client.on('messageCreate', async (message) => {
+    // 1. Kiểm tra nếu tin nhắn là bot hoặc không bắt đầu bằng dấu !
+    if (message.author.bot || !message.content.startsWith('!')) return;
 
+    const args = message.content.slice(1).trim().split(/ +/);
+    const command = args.shift().toLowerCase();
+
+    // 2. Xử lý lệnh chinhcau
+    if (command === 'chinhcau') {
+        // Kiểm tra quyền Admin
+        if (!message.member.permissions.has('Administrator')) {
+            return message.reply('❌ Bạn không có quyền sử dụng lệnh này!');
+        }
+
+        // Kiểm tra cú pháp: !chinhcau [ID Trận] [Cửa thắng]
+        if (args.length < 2) {
+            return message.reply('⚠️ Sai cú pháp! Dùng: `!chinhcau [ID_Trận] [chu/khach]`\nVí dụ: `!chinhcau 412345 chu`');
+        }
+
+        const matchId = args[0];
+        const sideWin = args[1].toLowerCase();
+
+        // Kiểm tra cửa thắng hợp lệ
+        if (sideWin !== 'chu' && sideWin !== 'khach') {
+            return message.reply('❌ Cửa thắng phải là `chu` hoặc `khach`!');
+        }
+
+        // Lưu vào bộ nhớ tạm
+        adminOverride.set(matchId, sideWin);
+
+        // Tạo Embed thông báo cho chuyên nghiệp
+        const embed = new EmbedBuilder()
+            .setTitle('🎯 XÁC NHẬN ĐIỀU CẦU')
+            .setColor(0xff0000) // Màu đỏ cảnh báo
+            .addFields(
+                { name: '🆔 ID Trận đấu', value: `\`${matchId}\``, inline: true },
+                { name: '🚩 Cửa thắng ép buộc', value: `**${sideWin === 'chu' ? 'ĐỘI CHỦ NHÀ' : 'ĐỘI KHÁCH'}**`, inline: true }
+            )
+            .setFooter({ text: 'Kết quả thật từ API sẽ bị bỏ qua cho trận này.' })
+            .setTimestamp();
+
+        return message.reply({ embeds: [embed] });
+    }
+});
 // --- 5. KHỞI CHẠY ---
 client.once('ready', async () => {
     console.log(`🚀 Bot Node.js đã sẵn sàng: ${client.user.tag}`);
