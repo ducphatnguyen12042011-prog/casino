@@ -1,43 +1,50 @@
+// 1. Cấu hình kết nối Database
 datasource db {
-  provider = "mongodb"
+  provider = "mysql"
   url      = env("DATABASE_URL")
 }
 
+// 2. Generator Client cho Node.js
 generator client {
   provider = "prisma-client-js"
 }
 
-// Bảng User: Lưu trữ tiền tệ Verdict Cash
+// --- CÁC MODEL DỮ LIỆU ---
+
+// Bảng User: Lưu trữ thông tin người dùng và số dư
 model User {
-  id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  discordId String   @unique
+  id        String   @id @default(uuid()) // UUID thay thế cho ObjectId của Mongo
+  discordId String   @unique              // Định danh duy nhất từ Discord
   balance   Int      @default(5000) 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Quan hệ: Một người dùng có thể có nhiều vé cược
+  // Quan hệ 1-N: Một User có nhiều đơn cược (Bets)
   bets      Bet[]
 }
 
-// Bảng Bet: Lưu trữ các vé cược bóng đá và casino
+// Bảng Bet: Lưu trữ các vé cược (Bóng đá, Casino, ...)
 model Bet {
-  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  id        String   @id @default(uuid())
   amount    Int
-  choice    String   // HOME, AWAY, OVER, UNDER, TAI, XIU
-  hcap      Float?   // Cho phép null nếu là cược Casino không có chấp
-  status    String   @default("PENDING") // WIN, LOSS, DRAW, PENDING
+  choice    String   // Ví dụ: HOME, AWAY, OVER, UNDER, TAI, XIU
+  hcap      Float?   // Tỉ lệ chấp (có thể null nếu là casino)
+  status    String   @default("PENDING") // Các trạng thái: WIN, LOSS, DRAW, PENDING
+  matchId   Int?     // ID trận đấu liên kết (nếu có)
   createdAt DateTime @default(now())
 
-  // Liên kết với bảng User qua discordId
+  // Thiết lập quan hệ với User thông qua discordId
   user      User     @relation(fields: [discordId], references: [discordId])
   discordId String
-  
-  matchId   Int?     // Cho phép null nếu là cược không theo trận đấu cụ thể
+
+  // Index giúp truy vấn lịch sử cược nhanh hơn trong MySQL
+  @@index([discordId])
+  @@index([matchId])
 }
 
-// Bảng MatchConfig: Admin thiết lập kèo thủ công
+// Bảng MatchConfig: Cấu hình kèo cho từng trận đấu (Dành cho Admin)
 model MatchConfig {
-  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  id        String   @id @default(uuid())
   matchId   Int      @unique
   hcap      Float    @default(0.5)
   total     Float    @default(2.5)
@@ -45,10 +52,10 @@ model MatchConfig {
   updatedAt DateTime @updatedAt
 }
 
-// Bảng Item: Sản phẩm trong Shop
+// Bảng Item: Danh sách vật phẩm trong cửa hàng
 model Item {
-  id        String @id @default(auto()) @map("_id") @db.ObjectId
-  name      String @unique
-  price     Int    // Giá tính bằng Verdict Cash
-  description String? 
+  id          String  @id @default(uuid())
+  name        String  @unique
+  price       Int     // Giá bằng Verdict Cash
+  description String? @db.VarChar(500) // Giới hạn 500 ký tự cho mô tả
 }
