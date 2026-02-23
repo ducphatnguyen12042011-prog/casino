@@ -14,18 +14,25 @@ model User {
   balance   Int      @default(5000) 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // Quan hệ: Một người dùng có thể có nhiều vé cược
+  bets      Bet[]
 }
 
-// Bảng Bet: Lưu trữ các vé cược bóng đá
+// Bảng Bet: Lưu trữ các vé cược bóng đá và casino
 model Bet {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  discordId String
-  matchId   Int
   amount    Int
-  choice    String   // HOME, AWAY, OVER, UNDER
-  hcap      Float    // Mức chấp/Tài xỉu tại thời điểm cược
+  choice    String   // HOME, AWAY, OVER, UNDER, TAI, XIU
+  hcap      Float?   // Cho phép null nếu là cược Casino không có chấp
   status    String   @default("PENDING") // WIN, LOSS, DRAW, PENDING
   createdAt DateTime @default(now())
+
+  // Liên kết với bảng User qua discordId
+  user      User     @relation(fields: [discordId], references: [discordId])
+  discordId String
+  
+  matchId   Int?     // Cho phép null nếu là cược không theo trận đấu cụ thể
 }
 
 // Bảng MatchConfig: Admin thiết lập kèo thủ công
@@ -40,7 +47,8 @@ model MatchConfig {
 
 // Bảng Item: Sản phẩm trong Shop
 model Item {
-  id    String @id @default(auto()) @map("_id") @db.ObjectId
-  name  String @unique
-  price Int    // Giá tính bằng Verdict Cash
+  id        String @id @default(auto()) @map("_id") @db.ObjectId
+  name      String @unique
+  price     Int    // Giá tính bằng Verdict Cash
+  description String? 
 }
