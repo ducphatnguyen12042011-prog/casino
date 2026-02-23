@@ -6,7 +6,7 @@ const client = new Client({
 
 // CẤU HÌNH CỐ ĐỊNH
 const CHANNEL_ID = '1475439630274007121'; 
-const TIME_BET = 300; // 5 phút = 300 giây
+const TIME_BET = 300; // 5 phút
 
 let game = {
     session: 934048n,
@@ -20,6 +20,7 @@ let game = {
     timerInterval: null
 };
 
+// Hệ thống ví lưu tạm
 const balances = new Map();
 const getBalance = (id) => balances.get(id) || 10000000;
 const updateBalance = (id, amt) => balances.set(id, getBalance(id) + amt);
@@ -28,13 +29,12 @@ function createEmbed(status = 'playing') {
     const min = Math.floor(game.timeLeft / 60);
     const sec = game.timeLeft % 60;
     const timeDisplay = `${min}p ${sec < 10 ? '0' : ''}${sec}s`;
-    const timeEmoji = game.timeLeft <= 20 ? '🧨' : '⏳';
     
     return new EmbedBuilder()
         .setAuthor({ name: `💎 TÀI XỈU CASINO - PHIÊN #${game.session.toString()}`, iconURL: 'https://i.imgur.com/8QO7Z6u.png' })
         .setColor(status === 'playing' ? '#f1c40f' : '#e74c3c')
         .setDescription(
-            `### ${timeEmoji} THỜI GIAN: \`${timeDisplay}\`\n` +
+            `### ⏳ THỜI GIAN: \`${timeDisplay}\`\n` +
             `> **TRẠNG THÁI:** ${status === 'playing' ? '🟢 ĐANG NHẬN CƯỢC' : '🔒 ĐÃ KHÓA CƯỢC'}\n\n` +
             `🏆 **HŨ RỒNG:** \`50,000,000\` xu\n` +
             `──────────────────────────\n` +
@@ -59,8 +59,12 @@ async function startRound() {
     const channel = client.channels.cache.get(CHANNEL_ID);
     if (!channel) return;
 
-    // Reset game state
-    if (game.timerInterval) clearInterval(game.timerInterval);
+    // QUAN TRỌNG: Xóa triệt để interval cũ để không bị nhảy thời gian
+    if (game.timerInterval) {
+        clearInterval(game.timerInterval);
+        game.timerInterval = null;
+    }
+
     game.isOpening = true;
     game.timeLeft = TIME_BET;
     game.totalTai = 0;
@@ -70,9 +74,8 @@ async function startRound() {
 
     game.mainMsg = await channel.send({ embeds: [createEmbed()], components: createRows() });
 
-    // Sử dụng Interval ổn định, cập nhật Embed mỗi 5 giây để tránh Rate Limit
     game.timerInterval = setInterval(async () => {
-        game.timeLeft -= 5; 
+        game.timeLeft -= 5; // Cập nhật mỗi 5s để mượt và không bị Rate Limit
         
         if (game.timeLeft > 10) {
             await game.mainMsg.edit({ embeds: [createEmbed()] }).catch(() => {});
@@ -100,14 +103,12 @@ async function handleResult() {
         if (bet.side === result) {
             updateBalance(uId, bet.amount * 1.95);
             game.mainMsg.channel.send({ content: `🥳 <@${uId}> thắng **+${(bet.amount * 1.95).toLocaleString()}** xu!` });
-        } else {
-            game.mainMsg.channel.send({ content: `😤 <@${uId}> thua **-${bet.amount.toLocaleString()}** xu!` });
         }
     }
 
     game.history.push({ result });
     await game.mainMsg.edit({ embeds: [resultEmbed], components: [] });
-    setTimeout(() => startRound(), 15000); // Nghỉ 15s giữa các phiên
+    setTimeout(() => startRound(), 15000);
 }
 
 client.on('interactionCreate', async (interaction) => {
@@ -118,15 +119,17 @@ client.on('interactionCreate', async (interaction) => {
         }
         if (!game.isOpening) return interaction.reply({ content: '❌ Phiên đã khóa!', ephemeral: true });
 
-        const modal = new ModalBuilder().setCustomId(`modal_${interaction.customId}`).setTitle('VÀO TIỀN');
+        const modal = new ModalBuilder().setCustomId(`modal_${interaction.customId}`).setTitle('XÁC NHẬN PHIẾU CƯỢC');
         modal.addComponents(new ActionRowBuilder().addComponents(
-            new TextInputBuilder().setCustomId('money').setLabel("Số tiền cược").setStyle(TextInputStyle.Short).setRequired(true)
+            new TextInputBuilder().setCustomId('money').setLabel("Số tiền cược (Cash)").setStyle(TextInputStyle.Short).setRequired(true)
         ));
         await interaction.showModal(modal);
     }
 
     if (interaction.isModalSubmit()) {
+        // FIX LỖI "ĐÃ XẢY RA LỖI": Phải defer ngay lập tức
         await interaction.deferReply({ ephemeral: true }); 
+        
         const inputAmt = parseInt(interaction.fields.getTextInputValue('money').replace(/,/g, ''));
         if (isNaN(inputAmt) || inputAmt < 1000) return interaction.editReply('❌ Tiền không hợp lệ!');
         if (getBalance(interaction.user.id) < inputAmt) return interaction.editReply('💸 Không đủ xu!');
@@ -137,9 +140,14 @@ client.on('interactionCreate', async (interaction) => {
         uBet.amount += inputAmt;
         if (side === 'tai') game.totalTai += inputAmt; else game.totalXiu += inputAmt;
         game.bets.set(interaction.user.id, uBet);
-        return interaction.editReply(`✅ Đã cược **${inputAmt.toLocaleString()}** vào **${side.toUpperCase()}**`);
+        
+        return interaction.editReply(`✅ Đã đặt cược **${inputAmt.toLocaleString()}** vào **${side.toUpperCase()}** thành công!`);
     }
 });
 
-client.once('ready', () => { startRound(); });
+client.once('ready', () => { 
+    console.log('🚀 BOT TÀI XỈU 5 PHÚT ĐÃ SẴN SÀNG!');
+    startRound(); 
+});
+
 client.login(process.env.BOT_TOKEN).catch(err => console.error("❌ Lỗi Token:", err.message));
