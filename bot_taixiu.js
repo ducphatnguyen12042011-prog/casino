@@ -1,18 +1,12 @@
-const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
 
-// Khởi tạo client cho riêng bot Tài Xỉu
 const client = new Client({ 
-    intents: [
-        GatewayIntentBits.Guilds, 
-        GatewayIntentBits.GuildMessages, 
-        GatewayIntentBits.MessageContent
-    ] 
+    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] 
 });
 
-// --- CẤU HÌNH HỆ THỐNG ---
 const CHANNEL_ID = '1475439630274007121';
 let sessionID = 1475439630274007121n;
-let jackpot = 50000000; 
+let jackpot = 50000000;
 let gameStatus = {
     isOpening: false,
     timeLeft: 40,
@@ -23,153 +17,131 @@ let gameStatus = {
     mainMsg: null
 };
 
-// Hệ thống ví tiền tạm thời (Nếu bạn dùng Prisma, hãy thay thế logic ở đây)
+// Giả lập ví tiền
 const userBalances = new Map();
-const getBalance = (id) => userBalances.get(id) || 1000000;
+const getBalance = (id) => userBalances.get(id) || 10000000;
 const updateBalance = (id, amt) => userBalances.set(id, getBalance(id) + amt);
 
-// --- GIAO DIỆN ---
 function createMainEmbed(status = 'playing') {
     const soiCau = gameStatus.history.length === 0 ? "⚪ Chưa có dữ liệu" : gameStatus.history.map(h => h.result === 'tai' ? '🔴' : '⚪').join(' ');
-    
-    return new EmbedBuilder()
+    const embed = new EmbedBuilder()
         .setTitle(`🎰 TÀI XỈU PHIÊN #${sessionID}`)
         .setColor(status === 'playing' ? '#f1c40f' : '#e74c3c')
-        .setDescription(`💰 **HŨ HIỆN TẠI:** 🏆 \`${jackpot.toLocaleString()}\` xu\n\n` +
-                        `⏳ **THỜI GIAN:** \`${gameStatus.timeLeft}s\`\n` +
+        .setDescription(`## ⏳ ĐẾM NGƯỢC: ${gameStatus.timeLeft}s\n` + 
+                        `💰 **HŨ:** \`${jackpot.toLocaleString()}\` xu\n\n` +
                         `🔴 **TỔNG TÀI:** \`${gameStatus.totalTai.toLocaleString()}\`\n` +
                         `⚪ **TỔNG XỈU:** \`${gameStatus.totalXiu.toLocaleString()}\`\n\n` +
-                        `📊 **SOI CẦU:**\n${soiCau}`)
-        .setImage(status === 'playing' ? 'https://i.imgur.com/xHq3n2S.gif' : null)
-        .setFooter({ text: 'Bấm chọn tiền và chọn cửa để cược!' });
+                        `📊 **SOI CẦU:** ${soiCau}`)
+        .setFooter({ text: status === 'playing' ? '👉 Bấm nút TÀI/XỈU để nhập tiền cược' : '🛑 Đã khóa cược' });
+    if (status === 'playing') embed.setThumbnail('https://i.imgur.com/xHq3n2S.gif');
+    return embed;
 }
 
 function createButtons(disabled = false) {
-    const row1 = new ActionRowBuilder().addComponents(
-        [1000, 10000, 100000, 500000].map(amt => 
-            new ButtonBuilder().setCustomId(`amt_${amt}`).setLabel(`+${amt.toLocaleString()}`).setStyle(ButtonStyle.Secondary).setDisabled(disabled)
-        )
-    );
-    const row2 = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('bet_tai').setLabel('ĐẶT TÀI').setStyle(ButtonStyle.Danger).setDisabled(disabled),
-        new ButtonBuilder().setCustomId('bet_xiu').setLabel('ĐẶT XỈU').setStyle(ButtonStyle.Primary).setDisabled(disabled),
-        new ButtonBuilder().setCustomId('clear').setLabel('XÓA').setStyle(ButtonStyle.Secondary).setDisabled(disabled),
+    return [new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('bet_tai').setLabel('TÀI').setStyle(ButtonStyle.Danger).setDisabled(disabled),
+        new ButtonBuilder().setCustomId('bet_xiu').setLabel('XỈU').setStyle(ButtonStyle.Primary).setDisabled(disabled),
         new ButtonBuilder().setCustomId('bal').setLabel('VÍ TIỀN').setStyle(ButtonStyle.Success)
-    );
-    return [row1, row2];
+    )];
 }
 
-// --- LOGIC GAME ---
 async function startRound() {
     const channel = client.channels.cache.get(CHANNEL_ID);
-    if (!channel) return console.log("❌ Không tìm thấy channel Tài Xỉu!");
-
+    if (!channel) return;
     gameStatus.isOpening = true;
-    gameStatus.timeLeft = 40;
+    gameStatus.timeLeft = 40; 
     gameStatus.totalTai = 0;
     gameStatus.totalXiu = 0;
     gameStatus.currentBets.clear();
     sessionID++;
-
-    gameStatus.mainMsg = await channel.send({ 
-        embeds: [createMainEmbed()], 
-        components: createButtons() 
-    });
+    gameStatus.mainMsg = await channel.send({ embeds: [createMainEmbed()], components: createButtons() });
 
     const timer = setInterval(async () => {
-        gameStatus.timeLeft -= 5;
-        if (gameStatus.timeLeft <= 5) {
-            clearInterval(timer);
-            gameStatus.isOpening = false;
-            await processResult();
-        } else {
+        gameStatus.timeLeft--;
+        if (gameStatus.timeLeft > 5) {
             await gameStatus.mainMsg.edit({ embeds: [createMainEmbed()] }).catch(() => {});
+        } else if (gameStatus.timeLeft <= 5 && gameStatus.timeLeft > 0) {
+            gameStatus.isOpening = false;
+            await gameStatus.mainMsg.edit({ embeds: [createMainEmbed('locking')], components: createButtons(true) }).catch(() => {});
+        } else if (gameStatus.timeLeft <= 0) {
+            clearInterval(timer);
+            processResult();
         }
-    }, 5000);
+    }, 1000); 
 }
 
 async function processResult() {
-    await gameStatus.mainMsg.edit({ components: createButtons(true) });
-
     const d = [Math.floor(Math.random()*6)+1, Math.floor(Math.random()*6)+1, Math.floor(Math.random()*6)+1];
     const total = d[0] + d[1] + d[2];
     const result = total >= 11 ? 'tai' : 'xiu';
-    const isJackpot = d[0] === d[1] && d[1] === d[2] && (d[0] === 1 || d[0] === 6);
-
-    const resEmbed = new EmbedBuilder().setTitle(`🎲 KẾT QUẢ PHIÊN #${sessionID}`).setColor('#2C2F33');
-    await gameStatus.mainMsg.edit({ embeds: [resEmbed.setDescription('🎲 **Đang nặn xúc xắc...**')] });
-
+    const isJackpot = (d[0] === d[1] && d[1] === d[2]) && (d[0] === 1 || d[0] === 6);
+    const resEmbed = new EmbedBuilder().setTitle(`🎲 KẾT QUẢ PHIÊN #${sessionID}`).setColor('#2b2d31');
+    
+    await gameStatus.mainMsg.edit({ embeds: [resEmbed.setDescription('🎲 **ĐANG NẶN VIÊN 1...**')], components: [] });
     setTimeout(async () => {
-        let resultText = `🎲 **KẾT QUẢ:** ${d[0]} - ${d[1]} - ${d[2]} = **${total}**\n🎯 **CỬA THẮNG:** __${result.toUpperCase()}__`;
-        if (isJackpot) resultText += `\n\n🎉 **NỔ HŨ THÀNH CÔNG!** 🎉`;
+        await gameStatus.mainMsg.edit({ embeds: [resEmbed.setDescription(`🎲 **ĐANG NẶN VIÊN 2:** ${d[0]} - ❓`)] });
+        setTimeout(async () => {
+            await gameStatus.mainMsg.edit({ embeds: [resEmbed.setDescription(`🎲 **ĐANG NẶN VIÊN 3:** ${d[0]} - ${d[1]} - ❓`)] });
+            setTimeout(async () => {
+                let resultText = `## 🎯 KẾT QUẢ: ${d[0]} - ${d[1]} - ${d[2]} = ${total}\n### CỬA THẮNG: ${result.toUpperCase()}`;
+                if (isJackpot) resultText += `\n\n🎊 **NỔ HŨ THÀNH CÔNG!** 🎊`;
+                resEmbed.setDescription(resultText).setColor(result === 'tai' ? '#ED4245' : '#5865F2');
+                gameStatus.history.push({ result });
+                if (gameStatus.history.length > 20) gameStatus.history.shift();
 
-        resEmbed.setDescription(resultText).setColor(result === 'tai' ? '#ED4245' : '#5865F2');
-        gameStatus.history.push({ result });
-        if (gameStatus.history.length > 20) gameStatus.history.shift();
-
-        // Trả thưởng
-        for (let [uId, bet] of gameStatus.currentBets) {
-            const winAmt = result === 'tai' ? bet.tai : bet.xiu;
-            if (winAmt > 0) {
-                let prize = winAmt * 1.95;
-                if (isJackpot) prize += (jackpot * (winAmt / (result === 'tai' ? gameStatus.totalTai : gameStatus.totalXiu)));
-                updateBalance(uId, prize);
-            }
-        }
-
-        if (isJackpot) jackpot = 50000000;
-        await gameStatus.mainMsg.edit({ embeds: [resEmbed] });
-
-        setTimeout(() => startRound(), 10000);
-    }, 4000);
+                for (let [uId, bet] of gameStatus.currentBets) {
+                    const winAmt = result === 'tai' ? bet.tai : bet.xiu;
+                    if (winAmt > 0) {
+                        let prize = winAmt * 1.95;
+                        if (isJackpot) prize += (jackpot * (winAmt / (result === 'tai' ? gameStatus.totalTai : gameStatus.totalXiu)));
+                        updateBalance(uId, prize);
+                    }
+                }
+                if (isJackpot) jackpot = 50000000;
+                await gameStatus.mainMsg.edit({ embeds: [resEmbed] });
+                setTimeout(() => startRound(), 10000);
+            }, 2000);
+        }, 2000);
+    }, 2000);
 }
 
-// --- TƯƠNG TÁC ---
 client.on('interactionCreate', async (interaction) => {
-    if (!interaction.isButton()) return;
-    const uId = interaction.user.id;
-    let uBet = gameStatus.currentBets.get(uId) || { tai: 0, xiu: 0, temp: 0 };
+    if (interaction.isButton()) {
+        const uId = interaction.user.id;
+        if (interaction.customId === 'bal') return interaction.reply({ content: `💰 Ví: **${getBalance(uId).toLocaleString()} xu**`, ephemeral: true });
+        if (!gameStatus.isOpening) return interaction.reply({ content: '❌ Hết thời gian cược!', ephemeral: true });
 
-    if (interaction.customId === 'bal') return interaction.reply({ content: `💰 Ví: **${getBalance(uId).toLocaleString()} xu**`, ephemeral: true });
-    if (!gameStatus.isOpening) return interaction.reply({ content: '❌ Đã hết thời gian cược!', ephemeral: true });
-
-    if (interaction.customId.startsWith('amt_')) {
-        uBet.temp += parseInt(interaction.customId.split('_')[1]);
-        gameStatus.currentBets.set(uId, uBet);
-        return interaction.reply({ content: `💵 Đang chọn: **${uBet.temp.toLocaleString()}**. Nhấn Đặt Cửa!`, ephemeral: true });
+        // Hiện bảng nhập tiền (Modal)
+        const modal = new ModalBuilder().setCustomId(`modal_${interaction.customId}`).setTitle('NHẬP TIỀN CƯỢC');
+        const moneyInput = new TextInputBuilder()
+            .setCustomId('money_input')
+            .setLabel("Số tiền muốn cược (Tối thiểu 1,000)")
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder('Ví dụ: 10000')
+            .setMinLength(4)
+            .setRequired(true);
+        modal.addComponents(new ActionRowBuilder().addComponents(moneyInput));
+        await interaction.showModal(modal);
     }
 
-    if (interaction.customId === 'clear') {
-        uBet.temp = 0;
-        gameStatus.currentBets.set(uId, uBet);
-        return interaction.reply({ content: '🧹 Đã xóa tiền chọn.', ephemeral: true });
-    }
+    if (interaction.isModalSubmit()) {
+        const uId = interaction.user.id;
+        const amount = parseInt(interaction.fields.getTextInputValue('money_input'));
+        const type = interaction.customId === 'modal_bet_tai' ? 'tai' : 'xiu';
 
-    if (interaction.customId === 'bet_tai' || interaction.customId === 'bet_xiu') {
-        if (uBet.temp <= 0) return interaction.reply({ content: '❌ Bạn chưa chọn số tiền!', ephemeral: true });
-        if (getBalance(uId) < uBet.temp) return interaction.reply({ content: '💸 Không đủ tiền!', ephemeral: true });
+        if (isNaN(amount) || amount < 1000) return interaction.reply({ content: '❌ Số tiền không hợp lệ! Tối thiểu phải là 1,000 xu.', ephemeral: true });
+        if (getBalance(uId) < amount) return interaction.reply({ content: '💸 Bạn không đủ số dư!', ephemeral: true });
 
-        updateBalance(uId, -uBet.temp);
-        jackpot += uBet.temp * 0.01; 
-
-        if (interaction.customId === 'bet_tai') {
-            uBet.tai += uBet.temp;
-            gameStatus.totalTai += uBet.temp;
-        } else {
-            uBet.xiu += uBet.temp;
-            gameStatus.totalXiu += uBet.temp;
-        }
+        updateBalance(uId, -amount);
+        jackpot += amount * 0.01; 
+        let uBet = gameStatus.currentBets.get(uId) || { tai: 0, xiu: 0 };
+        if (type === 'tai') { uBet.tai += amount; gameStatus.totalTai += amount; } 
+        else { uBet.xiu += amount; gameStatus.totalXiu += amount; }
         
-        uBet.temp = 0;
         gameStatus.currentBets.set(uId, uBet);
-        return interaction.reply({ content: `✅ Đã cược thành công!`, ephemeral: true });
+        return interaction.reply({ content: `✅ Đã đặt **${amount.toLocaleString()} xu** vào **${type.toUpperCase()}**`, ephemeral: true });
     }
 });
 
-client.once('ready', () => {
-    console.log(`✅ Bot Tài Xỉu ONLINE: ${client.user.tag}`);
-    startRound();
-});
-
-// Sử dụng biến môi trường DISCORD_TOKEN_TAIXIU để tránh lỗi trên Railway
+client.once('ready', () => { startRound(); });
 client.login(process.env.DISCORD_TOKEN_TAIXIU);
