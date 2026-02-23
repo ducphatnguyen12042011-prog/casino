@@ -13,7 +13,7 @@ generator client {
 
 // Bảng User: Lưu trữ thông tin người dùng và số dư
 model User {
-  id        String   @id @default(uuid()) // MySQL dùng UUID rất tốt
+  id        String   @id @default(uuid())
   discordId String   @unique              
   balance   Int      @default(5000) 
   createdAt DateTime @default(now())
@@ -23,36 +23,36 @@ model User {
   bets      Bet[]
 }
 
-// Bảng Transaction: Lưu lịch sử giao dịch (Cho lệnh !lichsu)
+// Bảng Transaction: Lưu lịch sử giao dịch chi tiết
 model Transaction {
   id        String   @id @default(uuid())
-  userId    String   // Discord ID của người sở hữu
+  userId    String   // Discord ID của người thực hiện/nhận
   type      String   // NAP, TRU, CHUYEN, NHAN, CUOC, THANG
   amount    Int      
   reason    String?  @db.VarChar(500)
   createdAt DateTime @default(now())
 
-  @@index([userId]) // Giúp truy vấn lịch sử nhanh hơn
+  @@index([userId]) // Tối ưu tốc độ tìm kiếm cho lệnh !lichsu
 }
 
-// Bảng Bet: Lưu trữ các vé cược
+// Bảng Bet: Lưu trữ các vé cược bóng đá
 model Bet {
   id        String   @id @default(uuid())
   amount    Int
-  choice    String   
+  choice    String   // Ví dụ: HOME, AWAY, OVER, UNDER
   hcap      Float?   
   status    String   @default("PENDING") 
   matchId   Int?     
   createdAt DateTime @default(now())
 
-  // Thiết lập quan hệ với User
+  // Thiết lập quan hệ với User thông qua discordId
   user      User     @relation(fields: [discordId], references: [discordId])
   discordId String
 
   @@index([discordId])
 }
 
-// Bảng MatchConfig: Cấu hình kèo cho từng trận đấu
+// Bảng MatchConfig: Cấu hình kèo trận đấu cho Admin
 model MatchConfig {
   id        String   @id @default(uuid())
   matchId   Int      @unique
@@ -62,7 +62,7 @@ model MatchConfig {
   updatedAt DateTime @updatedAt
 }
 
-// Bảng Item: Danh sách vật phẩm trong cửa hàng
+// Bảng Item: Danh sách vật phẩm trong cửa hàng (Shop)
 model Item {
   id          String  @id @default(uuid())
   name        String  @unique
