@@ -69,3 +69,11 @@ model Item {
   price       Int     
   description String? @db.VarChar(500)
 }
+model User {
+  id        Int      @id @default(autoincrement())
+  discordId String   @unique
+  balance   Int      @default(5000)
+  profit    Int      @default(0)
+  stk       String   @unique // Thêm dòng này
+  createdAt DateTime @default(now())
+}
