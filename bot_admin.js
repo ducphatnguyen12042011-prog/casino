@@ -138,4 +138,4 @@ client.on('messageCreate', async (msg) => {
     }
 });
 
-client.login(TOKEN);
+client.login(process.env.DISCORD_TOKEN_ECONOMY);
