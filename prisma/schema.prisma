@@ -1,4 +1,3 @@
-// 1. Cấu hình kết nối Database
 datasource db {
   provider = "mysql"
   url      = env("DATABASE_URL")
@@ -8,64 +7,44 @@ generator client {
   provider = "prisma-client-js"
 }
 
-// --- CÁC MODEL DỮ LIỆU ---
-
-// Model User duy nhất - Đã gộp STK và Profit
 model User {
   id        String   @id @default(uuid())
   discordId String   @unique
   balance   Int      @default(5000)
-  profit    Int      @default(0)        // Tiền lời cược
-  stk       String?  @unique           // Số tài khoản Verdict Banking
+  profit    Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  // Quan hệ: Một User có nhiều đơn cược
   bets      Bet[]
 }
 
-// Lịch sử giao dịch chi tiết
 model Transaction {
   id        String   @id @default(uuid())
   userId    String   
-  type      String   // NAP, TRU, CHUYEN, NHAN...
+  type      String   
   amount    Int      
   reason    String?  @db.VarChar(500)
   createdAt DateTime @default(now())
-
   @@index([userId])
 }
 
-// Vé cược bóng đá
 model Bet {
   id        String   @id @default(uuid())
   amount    Int
   choice    String   
   hcap      Float?   
   status    String   @default("PENDING") 
-  matchId   Int?     
+  matchId   String?     
   createdAt DateTime @default(now())
-
   user      User     @relation(fields: [discordId], references: [discordId])
   discordId String
-
   @@index([discordId])
 }
 
-// Cấu hình trận đấu cho Admin
 model MatchConfig {
   id        String   @id @default(uuid())
-  matchId   Int      @unique
+  matchId   String   @unique
   hcap      Float    @default(0.5)
   total     Float    @default(2.5)
   isLocked  Boolean  @default(false)
   updatedAt DateTime @updatedAt
-}
-
-// Cửa hàng vật phẩm
-model Item {
-  id          String  @id @default(uuid())
-  name        String  @unique
-  price       Int     
-  description String? @db.VarChar(500)
 }
