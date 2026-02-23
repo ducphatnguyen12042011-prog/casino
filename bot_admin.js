@@ -11,11 +11,11 @@ const client = new Client({
 
 // --- CẤU HÌNH ---
 const ADMIN_ROLE_ID = "1465374336214106237"; // ID Role quản trị
-const LOG_CHANNEL_ID = "1475501156267462676"; // THAY ID KÊNH LOG CỦA BẠN VÀO ĐÂY
+const LOG_CHANNEL_ID = "1475501156267462676"; // Kênh Log của bạn
 const CURRENCY_NAME = "Cash";
 const CURRENCY_ICON = "💰";
 
-// Hàm gửi Log chuyên nghiệp vào kênh riêng
+// Hàm gửi Log chuyên nghiệp
 async function sendLog(guild, embed) {
     const logChannel = guild.channels.cache.get(LOG_CHANNEL_ID);
     if (logChannel) {
@@ -41,33 +41,56 @@ client.on('messageCreate', async (msg) => {
 
     const args = msg.content.trim().split(/\s+/);
     const command = args[0].toLowerCase();
-    
-    // Kiểm tra quyền Admin
     const isAdmin = msg.member.roles.cache.has(ADMIN_ROLE_ID) || msg.member.permissions.has(PermissionFlagsBits.Administrator);
 
-    // 1. LỆNH !VI - XEM VÍ (Giao diện đẹp)
+    // 1. LỆNH !VI - XEM VÍ + TIỀN LỜI + 3 LỊCH SỬ GẦN NHẤT
     if (command === '!vi') {
         const target = msg.mentions.users.first() || msg.author;
         if (target.id !== msg.author.id && !isAdmin) return msg.reply("❌ Bạn không có quyền xem ví người khác!");
 
         try {
-            const balance = await getBalance(target.id);
+            // Lấy thông tin User và 3 giao dịch gần nhất
+            const [user, logs] = await Promise.all([
+                prisma.user.findUnique({ where: { discordId: target.id } }),
+                prisma.transaction.findMany({
+                    where: { userId: target.id },
+                    orderBy: { createdAt: 'desc' },
+                    take: 3
+                })
+            ]);
+
+            // Nếu user chưa tồn tại trong DB, lấy mặc định
+            const balance = user ? user.balance : 0;
+            const profit = user && user.profit ? user.profit : 0;
+
+            // Định dạng danh sách lịch sử
+            const historyText = logs.length > 0 
+                ? logs.map(l => {
+                    const icon = (l.type === "NAP" || l.type === "NHAN" || l.type === "THANG") ? "📈" : "📉";
+                    return `${icon} **${l.type}**: \`${l.amount.toLocaleString()}\` | <t:${Math.floor(l.createdAt.getTime() / 1000)}:R>`;
+                }).join("\n")
+                : "📭 Chưa có giao dịch nào gần đây.";
+
             const embed = new EmbedBuilder()
-                .setAuthor({ name: `THÔNG TIN TÀI KHOẢN`, iconURL: target.displayAvatarURL() })
-                .setColor("#3498db")
+                .setAuthor({ name: `HỆ THỐNG TÀI CHÍNH - ${target.username.toUpperCase()}`, iconURL: target.displayAvatarURL() })
+                .setColor("#00ffcc")
                 .setThumbnail(target.displayAvatarURL())
                 .addFields(
-                    { name: "👤 Người sở hữu", value: `${target}`, inline: true },
-                    { name: `${CURRENCY_ICON} Số dư`, value: `**${balance.toLocaleString()}** ${CURRENCY_NAME}`, inline: true }
+                    { name: "💰 Tiền Tiêu", value: `**${balance.toLocaleString()}** ${CURRENCY_NAME}`, inline: true },
+                    { name: "💹 Tiền Lời", value: `**${profit.toLocaleString()}** ${CURRENCY_NAME}`, inline: true },
+                    { name: "━━━━━━ 3 Giao dịch gần nhất ━━━━━━", value: historyText }
                 )
-                .setFooter({ text: "Dữ liệu thời gian thực từ MySQL" })
+                .setFooter({ text: "Dữ liệu khớp 100% với MySQL" })
                 .setTimestamp();
 
             msg.reply({ embeds: [embed] });
-        } catch (e) { msg.reply("❌ Lỗi truy xuất ví."); }
+        } catch (e) { 
+            console.error(e);
+            msg.reply("❌ Lỗi truy xuất ví."); 
+        }
     }
 
-    // 2. LỆNH !NAP - NẠP TIỀN (Admin Only + Log)
+    // 2. LỆNH !NAP - NẠP TIỀN
     if (command === '!nap' && isAdmin) {
         const target = msg.mentions.users.first();
         const amount = parseInt(args[2]);
@@ -105,7 +128,7 @@ client.on('messageCreate', async (msg) => {
         } catch (e) { msg.reply("❌ Lỗi hệ thống."); }
     }
 
-    // 3. LỆNH !TRU - TRỪ TIỀN (Admin Only + Log)
+    // 3. LỆNH !TRU - TRỪ TIỀN
     if (command === '!tru' && isAdmin) {
         const target = msg.mentions.users.first();
         const amount = parseInt(args[2]);
@@ -133,7 +156,7 @@ client.on('messageCreate', async (msg) => {
         } catch (e) { msg.reply("❌ Lỗi khi trừ tiền."); }
     }
 
-    // 4. LỆNH !CHUYEN - CHUYỂN TIỀN (User)
+    // 4. LỆNH !CHUYEN - CHUYỂN TIỀN
     if (command === '!chuyen') {
         const target = msg.mentions.users.first();
         const amount = parseInt(args[2]);
@@ -153,6 +176,8 @@ client.on('messageCreate', async (msg) => {
                 .setDescription(`**${msg.author.tag}** chuyển **${amount.toLocaleString()}** cho **${target.tag}**`)
                 .setTimestamp();
             await sendLog(msg.guild, logEmbed);
+            await saveTransaction(msg.author.id, "CHUYEN", amount, `Chuyển cho ${target.tag}`);
+            await saveTransaction(target.id, "NHAN", amount, `Nhận từ ${msg.author.tag}`);
         } catch (e) { msg.reply("❌ Lỗi chuyển tiền."); }
     }
 
