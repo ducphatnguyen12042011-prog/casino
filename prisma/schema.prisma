@@ -11,11 +11,13 @@ generator client {
 
 // --- CÁC MODEL DỮ LIỆU ---
 
-// Bảng User: Lưu trữ thông tin người dùng và số dư
+// Bảng User: Đã hợp nhất và thêm STK + Profit
 model User {
   id        String   @id @default(uuid())
-  discordId String   @unique              
-  balance   Int      @default(5000) 
+  discordId String   @unique
+  balance   Int      @default(5000)
+  profit    Int      @default(0)        // Lưu tiền lời cược/giao dịch
+  stk       String?  @unique           // Số tài khoản ngân hàng Verdict
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -32,7 +34,7 @@ model Transaction {
   reason    String?  @db.VarChar(500)
   createdAt DateTime @default(now())
 
-  @@index([userId]) // Tối ưu tốc độ tìm kiếm cho lệnh !lichsu
+  @@index([userId]) // Tối ưu tốc độ tìm kiếm
 }
 
 // Bảng Bet: Lưu trữ các vé cược bóng đá
@@ -69,11 +71,5 @@ model Item {
   price       Int     
   description String? @db.VarChar(500)
 }
-model User {
-  id        Int      @id @default(autoincrement())
-  discordId String   @unique
-  balance   Int      @default(5000)
-  profit    Int      @default(0)
-  stk       String   @unique // Thêm dòng này
   createdAt DateTime @default(now())
 }
