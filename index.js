@@ -1,31 +1,46 @@
-import { Client, GatewayIntentBits, ActivityType } from 'discord.js';
-import { config } from 'dotenv';
+const { Client, GatewayIntentBits, InteractionType } = require('discord.js');
+const { PrismaClient } = require('@prisma/client');
 
-config();
+// Khởi tạo Prisma toàn cục
+const prisma = new PrismaClient();
+global.prisma = prisma; 
 
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent, // Bắt buộc để nhận lệnh !tx
-        GatewayIntentBits.GuildMembers
+        GatewayIntentBits.MessageContent, // Bắt buộc để đọc được "!tx"
     ]
 });
 
-// Xuất client để các file khác dùng chung
-export default client;
-
-// Nạp các module bot (Đảm bảo file tồn tại như trong ảnh image_43b225.png)
-console.log('⏳ Đang khởi động các module...');
-await import('./bot_cado.js');
-await import('./bot_taixiu.js');
-await import('./bot_admin.js');
-await import('./bot_shop.js');
-await import('./bot_bxh.js');
+// Import các file bot
+const bot_taixiu = require('./bot_taixiu.js');
+// const bot_cado = require('./bot_cado.js'); // Khi nào bạn làm xong cado thì mở dòng này ra
 
 client.on('ready', () => {
-    console.log(`✅ HỆ THỐNG ONLINE: ${client.user.tag}`);
-    client.user.setActivity('🎲 !tx | ⚽ !keo', { type: ActivityType.Watching });
+    console.log(`🚀 Bot đã online: ${client.user.tag}`);
 });
 
-client.login(process.env.DISCORD_TOKEN);
+// Lắng nghe lệnh chat
+client.on('messageCreate', async (message) => {
+    if (message.author.bot) return;
+
+    if (message.content === '!tx') {
+        await bot_taixiu.execute(message);
+    }
+});
+
+// Lắng nghe nút bấm và modal
+client.on('interactionCreate', async (interaction) => {
+    // Điều hướng các tương tác có ID bắt đầu bằng "tx_" về file bot_taixiu
+    if (interaction.customId?.startsWith('tx_') || interaction.customId?.startsWith('modal_tx_')) {
+        await bot_taixiu.handleInteraction(interaction);
+    }
+});
+
+client.login('TOKEN_CUA_BAN');
+
+process.on('SIGINT', async () => {
+    await prisma.$disconnect();
+    process.exit();
+});
