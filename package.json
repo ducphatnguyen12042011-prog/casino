@@ -1,11 +1,11 @@
 {
-  "name": "discord-bot",
+  "name": "verdict-casino",
   "version": "1.0.0",
-  "description": "",
+  "description": "Discord Bot for Football Betting and Casino",
   "main": "index.js",
   "scripts": {
-  "start": "npx prisma generate && node index.js"
-}
+    "start": "npx prisma generate && node index.js"
+  },
   "dependencies": {
     "discord.js": "^14.13.0",
     "@prisma/client": "^5.0.0",
@@ -15,5 +15,8 @@
   },
   "devDependencies": {
     "prisma": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
