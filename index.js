@@ -92,7 +92,8 @@ client.on('interactionCreate', async (interaction) => {
 
 // 4. ĐĂNG NHẬP (SỬ DỤNG BIẾN TRÊN RAILWAY)
 const token = process.env.DISCORD_TOKEN;
-if (!token) {
+
+if (!token || token.trim() === "") {
     console.error("❌ THIẾU DISCORD_TOKEN TRÊN RAILWAY VARIABLES!");
     process.exit(1);
 }
