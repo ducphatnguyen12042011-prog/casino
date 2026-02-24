@@ -1,15 +1,14 @@
 {
-  "name": "verdict-system",
+  "name": "verdict-bot",
   "version": "1.0.0",
   "type": "module",
-  "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "npx prisma generate && node index.js"
   },
   "dependencies": {
-    "@prisma/client": "^7.4.1",
+    "@prisma/client": "^5.10.2",
     "discord.js": "^14.14.1",
     "dotenv": "^16.4.5",
-    "node-fetch": "^3.3.2"
+    "prisma": "^5.10.2"
   }
 }
