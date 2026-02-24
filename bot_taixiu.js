@@ -1,89 +1,98 @@
-const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
+const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, InteractionType } = require('discord.js');
+// Giả sử bạn import hàm xử lý tiền từ file economy của bạn
+// const { getBalance, updateBalance } = require('./shared/economy'); 
 
-const client = new Client({ 
-    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] 
-});
-
-const PREFIX = '!';
-let history = []; // Lưu trữ soi cầu
-
-// Hệ thống ví giả lập (Thay bằng Database của bạn nếu có)
-const balances = new Map();
-const getBalance = (id) => balances.get(id) || 10000000;
-const updateBalance = (id, amt) => balances.set(id, getBalance(id) + amt);
-
-// --- 1. LỆNH KHỞI TẠO (!TX) ---
-client.on('messageCreate', async (message) => {
-    if (message.author.bot || !message.content.startsWith(PREFIX)) return;
-
-    if (message.content.toLowerCase() === '!tx') {
+module.exports = {
+    name: 'taixiu',
+    description: 'Chơi game Tài Xỉu',
+    async execute(message) {
         const embed = new EmbedBuilder()
-            .setAuthor({ name: "CASINO INSTANT - KẾT QUẢ NGAY LẬP TỨC", iconURL: "https://i.imgur.com/8QO7Z6u.png" })
-            .setTitle("🎲 BẠN MUỐN ĐẶT CỬA NÀO?")
-            .setColor("#f1c40f")
-            .setDescription("Kết quả sẽ được tính toán và hiển thị ngay sau khi bạn xác nhận tiền cược!")
-            .addFields({ name: "📊 SOI CẦU GẦN NHẤT", value: history.slice(-12).map(h => h === 'tai' ? '🔴' : '⚪').join(' ') || 'Chưa có dữ liệu' });
-
-        const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('bet_tai').setLabel('ĐẶT TÀI').setStyle(ButtonStyle.Danger),
-            new ButtonBuilder().setCustomId('bet_xiu').setLabel('ĐẶT XỈU').setStyle(ButtonStyle.Primary)
-        );
-
-        await message.channel.send({ embeds: [embed], components: [row] });
-    }
-});
-
-// --- 2. XỬ LÝ CƯỢC VÀ TRẢ KẾT QUẢ LIỀN ---
-client.on('interactionCreate', async (interaction) => {
-    if (interaction.isButton()) {
-        const side = interaction.customId === 'bet_tai' ? 'tai' : 'xiu';
-        const modal = new ModalBuilder().setCustomId(`modal_${side}`).setTitle('🎫 PHIẾU CƯỢC NHANH');
-        
-        modal.addComponents(new ActionRowBuilder().addComponents(
-            new TextInputBuilder().setCustomId('money').setLabel('Số tiền cược').setStyle(TextInputStyle.Short).setRequired(true)
-        ));
-        await interaction.showModal(modal);
-    }
-
-    if (interaction.isModalSubmit()) {
-        // Fix lỗi "Đã xảy ra lỗi" bằng cách phản hồi ngay
-        await interaction.deferReply(); 
-
-        const side = interaction.customId.split('_')[1];
-        const amount = parseInt(interaction.fields.getTextInputValue('money').replace(/,/g, ''));
-        const uId = interaction.user.id;
-
-        if (isNaN(amount) || amount < 1000) return interaction.editReply("❌ Tiền cược không hợp lệ!");
-        if (getBalance(uId) < amount) return interaction.editReply("❌ Số dư không đủ!");
-
-        // --- XỬ LÝ KẾT QUẢ NGAY LẬP TỨC ---
-        const d = [Math.floor(Math.random() * 6) + 1, Math.floor(Math.random() * 6) + 1, Math.floor(Math.random() * 6) + 1];
-        const total = d[0] + d[1] + d[2];
-        const result = total >= 11 ? 'tai' : 'xiu';
-        const diceIcons = d.map(v => v === 1 ? '⚀' : v === 2 ? '⚁' : v === 3 ? '⚂' : v === 4 ? '⚃' : v === 5 ? '⚄' : '⚅').join(' ');
-        
-        history.push(result);
-        const isWin = (side === result);
-        
-        if (isWin) updateBalance(uId, amount * 0.95);
-        else updateBalance(uId, -amount);
-
-        const resEmbed = new EmbedBuilder()
-            .setTitle(isWin ? "🎉 CHIẾN THẮNG!" : "💀 RẤT TIẾC...")
-            .setColor(isWin ? "#2ecc71" : "#e74c3c")
-            .setDescription(
-                `👤 **Người chơi:** <@${uId}>\n` +
-                `🎯 **Bạn đã chọn:** **${side.toUpperCase()}**\n\n` +
-                `🎲 **Xúc xắc:** **${diceIcons}** (${d.join('-')})\n` +
-                `🏁 **Tổng điểm:** \`${total}\` => **${result.toUpperCase()}**\n\n` +
-                `💰 **Ví hiện tại:** \`${getBalance(uId).toLocaleString()}\` xu`
-            )
-            .addFields({ name: "📊 SOI CẦU MỚI", value: history.slice(-15).map(h => h === 'tai' ? '🔴' : '⚪').join(' ') })
+            .setTitle('🎲 TÀI XỈU - CASINO TRỰC TUYẾN')
+            .setDescription('Nhấn vào nút bên dưới để chọn cửa đặt cược.\n\n**Lưu ý:** Mức cược tối thiểu là **1,000**.')
+            .setColor('#ffcc00')
             .setTimestamp();
 
-        await interaction.editReply({ embeds: [resEmbed] });
-    }
-});
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('tx_tai').setLabel('TÀI').setStyle(ButtonStyle.Danger),
+            new ButtonBuilder().setCustomId('tx_xiu').setLabel('XỈU').setStyle(ButtonStyle.Primary)
+        );
 
-client.once('ready', () => { console.log(`🚀 Bot Instant đã sẵn sàng!`); });
-client.login(process.env.BOT_TOKEN);
+        await message.reply({ embeds: [embed], components: [row] });
+    },
+
+    // Hàm xử lý tương tác (Nút bấm và Modal)
+    async handleInteraction(interaction) {
+        // 1. Hiển thị Modal nhập tiền khi nhấn nút
+        if (interaction.isButton()) {
+            const betType = interaction.customId === 'tx_tai' ? 'Tài' : 'Xỉu';
+            
+            const modal = new ModalBuilder()
+                .setCustomId(`modal_${interaction.customId}`)
+                .setTitle(`Đặt Cược: ${betType.toUpperCase()}`);
+
+            const amountInput = new TextInputBuilder()
+                .setCustomId('bet_amount')
+                .setLabel("Số tiền muốn cược (Tối thiểu 1,000)")
+                .setStyle(TextInputStyle.Short)
+                .setPlaceholder('Nhập số tiền...')
+                .setRequired(true);
+
+            modal.addComponents(new ActionRowBuilder().addComponents(amountInput));
+            return await interaction.showModal(modal);
+        }
+
+        // 2. Xử lý logic thắng thua sau khi nộp Modal
+        if (interaction.type === InteractionType.ModalSubmit) {
+            const amount = parseInt(interaction.fields.getTextInputValue('bet_amount'));
+            const userChoice = interaction.customId.includes('tai') ? 'Tài' : 'Xỉu';
+
+            // Kiểm tra số tiền hợp lệ
+            if (isNaN(amount) || amount < 1000) {
+                return interaction.reply({ content: '❌ Số tiền không hợp lệ (Phải từ 1,000 trở lên).', ephemeral: true });
+            }
+
+            // --- ĐOẠN NÀY BẠN CHECK SỐ DƯ TỪ PRISMA/ECONOMY ---
+            // const balance = await getBalance(interaction.user.id);
+            // if (balance < amount) return interaction.reply({ content: 'Bạn không đủ tiền!', ephemeral: true });
+
+            // Lắc xúc xắc
+            const dice = [Math.floor(Math.random() * 6) + 1, Math.floor(Math.random() * 6) + 1, Math.floor(Math.random() * 6) + 1];
+            const total = dice.reduce((a, b) => a + b, 0);
+            
+            let result;
+            if (dice[0] === dice[1] && dice[1] === dice[2]) result = 'Đặc biệt';
+            else result = total >= 11 ? 'Tài' : 'Xỉu';
+
+            const isWin = (userChoice === result);
+
+            // --- ĐOẠN NÀY CẬP NHẬT TIỀN VÀO DATABASE ---
+            // if (isWin) await updateBalance(interaction.user.id, amount);
+            // else await updateBalance(interaction.user.id, -amount);
+
+            const resultEmbed = new EmbedBuilder()
+                .setAuthor({ name: interaction.user.username, iconURL: interaction.user.displayAvatarURL() })
+                .setColor(isWin ? '#00ff00' : '#ff0000')
+                .setDescription(`
+**🕒 Thời gian**
+${new Date().toLocaleString('vi-VN')}
+**📝 Cược vào**
+${userChoice}
+**💸 Số tiền**
+${amount.toLocaleString()}
+
+----------------------------------
+**🎉 Kết quả phiên tài xỉu** 🟡
+Phiên số: #${Math.floor(Math.random() * 10000)}
+
+🎲 Xúc xắc 1: **${dice[0]}** | 2: **${dice[1]}** | 3: **${dice[2]}**
+
+**🔞 Tổng số điểm: ${total}**
+**📝 Kết quả: ${result}**
+**📈 Nhà cái ${isWin ? 'trả' : 'ăn'}: ${amount.toLocaleString()}**
+                `)
+                .setFooter({ text: 'minecrafter.com' });
+
+            await interaction.reply({ embeds: [resultEmbed] });
+        }
+    }
+};
