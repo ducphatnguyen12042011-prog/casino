@@ -1,5 +1,4 @@
 // prisma/schema.prisma
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -9,11 +8,21 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// Các Model cần thiết cho hệ thống của bạn
 model User {
   discordId String   @id @unique
   balance   Int      @default(0)
   bets      Bet[]
-  transactions Transaction[]
+}
+
+model Bet {
+  id          Int      @id @default(autoincrement())
+  discordId   String
+  matchId     String
+  choice      String
+  amount      Int
+  isProcessed Boolean  @default(false)
+  user        User     @relation(fields: [discordId], references: [discordId])
 }
 
 model MatchConfig {
@@ -21,24 +30,4 @@ model MatchConfig {
   hcap     Float   @default(0)
   total    Float   @default(0)
   isLocked Boolean @default(false)
-}
-
-model Bet {
-  id          Int      @id @default(autoincrement())
-  discordId   String
-  matchId     String
-  choice      String   // HOME, AWAY, OVER, UNDER, TAI, XIU
-  amount      Int
-  isProcessed Boolean  @default(false)
-  user        User     @relation(fields: [discordId], references: [discordId])
-}
-
-model Transaction {
-  id        Int      @id @default(autoincrement())
-  userId    String
-  type      String   // CONG, TRU
-  amount    Int
-  reason    String
-  createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [discordId])
 }
