@@ -1,24 +1,23 @@
-generator client {
-  provider = "prisma-client-js"
-}
-
 datasource db {
   provider = "mysql"
-  url      = "mysql://root:root@localhost:3306/mydb" // Dán dòng này vào, kệ nó, Railway sẽ tự thay thế sau
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-api"
 }
 
 model User {
-  discordId String   @id @unique
-  balance   Int      @default(5000)
-  bets      Bet[]
+  id        String   @id // Discord ID
+  balance   BigInt   @default(0)
+  profit    BigInt   @default(0)
+  lastTrans DateTime @updatedAt
 }
 
 model Bet {
-  id          Int      @id @default(autoincrement())
-  discordId   String
-  matchId     String
-  choice      String
-  amount      Int
-  isProcessed Boolean  @default(false)
-  user        User     @relation(fields: [discordId], references: [discordId])
+  id        Int      @id @default(autoincrement())
+  userId    String
+  amount    BigInt
+  type      String   // 'tai', 'xiu', 'bongda'
+  status    String   // 'pending', 'win', 'lose'
 }
