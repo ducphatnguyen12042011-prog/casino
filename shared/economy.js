@@ -1,55 +1,38 @@
-const { PrismaClient } = require('@prisma/client');
+// shared/economy.js
+import { PrismaClient } from '@prisma/client';
 
-const prisma = new PrismaClient();
+// Khởi tạo Prisma và truyền URL từ Railway hệ thống
+export const prisma = new PrismaClient({
+  datasources: {
+    db: {
+      url: process.env.DATABASE_URL,
+    },
+  },
+});
 
-
-
-// Hàm lấy số dư: Nếu chưa có thì tạo mới với 5000
-
-async function getBalance(userId) {
-
+export async function getBalance(userId) {
+  try {
     const user = await prisma.user.upsert({
-
-        where: { discordId: userId },
-
-        update: {}, // Không thay đổi gì nếu đã tồn tại
-
-        create: { discordId: userId, balance: 5000 } // Tạo mới nếu chưa có
-
+      where: { discordId: userId },
+      update: {},
+      create: { discordId: userId, balance: 5000 }
     });
-
     return user.balance;
-
+  } catch (error) {
+    console.error("❌ Lỗi Ví:", error);
+    return 0;
+  }
 }
 
-
-
-// Hàm cập nhật số dư: Dùng upsert để tránh lỗi "Không tìm thấy người dùng"
-
-async function updateBalance(userId, amount) {
-
+export async function updateBalance(userId, amount) {
+  try {
     return await prisma.user.upsert({
-
-        where: { discordId: userId },
-
-        update: { 
-
-            balance: { increment: amount } 
-
-        },
-
-        create: { 
-
-            discordId: userId, 
-
-            balance: 5000 + amount // Nếu nạp lần đầu thì tặng 5k gốc + số tiền nạp
-
-        }
-
+      where: { discordId: userId },
+      update: { balance: { increment: amount } },
+      create: { discordId: userId, balance: 5000 + amount }
     });
-
+  } catch (error) {
+    console.error("❌ Lỗi cập nhật Ví:", error);
+    throw error;
+  }
 }
-
-
-
-module.exports = { getBalance, updateBalance, prisma };
