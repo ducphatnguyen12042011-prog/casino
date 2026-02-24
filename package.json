@@ -1,15 +1,15 @@
 {
-  "name": "discord-bot-all-in-one",
+  "name": "bot-cado-supreme",
   "version": "1.0.0",
+  "description": "Bot cá cược bóng đá chuyên nghiệp",
   "main": "index.js",
   "scripts": {
-    "start": "npx prisma db push && node index.js",
-    "postinstall": "npx prisma generate"
+    "start": "node index.js",
+    "dev": "nodemon index.js"
   },
   "dependencies": {
     "discord.js": "^14.14.1",
-    "axios": "^1.6.7",
-    "prisma": "^5.10.2",
-    "@prisma/client": "^5.10.2"
+    "@prisma/client": "^5.10.2",
+    "dotenv": "^16.4.5"
   }
 }
