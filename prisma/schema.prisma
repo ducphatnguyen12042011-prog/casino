@@ -5,39 +5,21 @@ generator client {
 
 datasource db {
   provider = "mysql"
-  // url = env("DATABASE_URL") // <-- DÒNG NÀY GÂY LỖI, CẦN COMMENT LẠI
+  // url = env("DATABASE_URL") <-- XÓA HOẶC COMMENT DÒNG NÀY ĐỂ HẾT LỖI P1012
 }
 
 model User {
   discordId String   @id @unique
-  balance   Int      @default(0)
+  balance   Int      @default(5000)
   bets      Bet[]
-  transactions Transaction[]
-}
-
-model MatchConfig {
-  matchId  String  @id @unique
-  hcap     Float   @default(0)
-  total    Float   @default(0)
-  isLocked Boolean @default(false)
 }
 
 model Bet {
   id          Int      @id @default(autoincrement())
   discordId   String
   matchId     String
-  choice      String   // TAI, XIU, HOME, AWAY
+  choice      String
   amount      Int
   isProcessed Boolean  @default(false)
   user        User     @relation(fields: [discordId], references: [discordId])
-}
-
-model Transaction {
-  id        Int      @id @default(autoincrement())
-  userId    String
-  type      String   // CONG, TRU
-  amount    Int
-  reason    String
-  createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [discordId])
 }
