@@ -91,10 +91,11 @@ client.on('interactionCreate', async (interaction) => {
 });
 
 // 4. ĐĂNG NHẬP (SỬ DỤNG BIẾN TRÊN RAILWAY)
-const token = process.env.DISCORD_TOKEN;
+// Thay vì dùng process.env.DISCORD_TOKEN, hãy dán thẳng token vào đây
+const token = "MTQ3NDY3Mjg3Mzg5NjY3MzMxMA.GXG3Ok.YWVKGkXRv0yNZ1F2NwwdgHUfux9Xv1708nPLPg"; 
 
-if (!token || token.trim() === "") {
-    console.error("❌ THIẾU DISCORD_TOKEN TRÊN RAILWAY VARIABLES!");
+if (!token || token === "DÁN_MÃ_TOKEN_CỦA_BẠN_VÀO_TRONG_NGOẶC_KÉP_NÀY") {
+    console.error("❌ BẠN CHƯA DÁN TOKEN TRỰC TIẾP VÀO CODE!");
     process.exit(1);
 }
 
