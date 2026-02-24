@@ -7,21 +7,65 @@ const client = new Client({
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] 
 });
 
-// --- CẤU HÌNH HỆ THỐNG ---
-const BET_CHANNEL_ID = "1474793205299155135";  // Kênh ĐƯỢC đặt cược
-const LIVE_CHANNEL_ID = "1474672512708247582"; // Kênh CHỈ báo Live
-const ADMIN_ROLE_ID = "1465374336214106237";   // Role Admin
+// --- CẤU HÌNH ---
+const BET_CHANNEL_ID = "1474793205299155135"; 
+const LIVE_CHANNEL_ID = "1474672512708247582";
+const ADMIN_ROLE_ID = "1465374336214106237";
 
-// Danh sách đội bóng được phép (EPL & La Liga)
-const VALID_TEAMS = [
-    "MANCHESTER UNITED", "MANCHESTER CITY", "LIVERPOOL FC", "ARSENAL FC", "CHELSEA FC", 
-    "TOTTENHAM HOTSPUR", "NEWCASTLE UNITED", "ASTON VILLA", "WEST HAM UNITED", 
-    "EVERTON FC", "LEICESTER CITY", "REAL MADRID CF", "FC BARCELONA", "ATLÉTICO MADRID", 
-    "SEVILLA FC", "VALENCIA CF", "REAL SOCIEDAD", "ATHLETIC BILBAO", "VILLARREAL CF"
-];
+// Biến lưu trữ ID tin nhắn bảng kèo để cập nhật (tránh spam)
+let lastBetMessageId = null;
 
-// --- 1. TỰ ĐỘNG LẤY TRẬN ĐẤU TỪ API ---
-async function syncMatchesFromAPI() {
+// --- HÀM GỬI BẢNG KÈO TỰ ĐỘNG ---
+async function refreshBetBoard() {
+    try {
+        const betChan = await client.channels.fetch(BET_CHANNEL_ID);
+        if (!betChan) return console.log("❌ Không tìm thấy kênh Đặt Cược!");
+
+        const matches = await prisma.matchConfig.findMany({ 
+            where: { isLocked: false, hcap: { not: 0 } } 
+        });
+
+        if (matches.length === 0) return;
+
+        // Xóa tin nhắn cũ nếu có để tránh trôi tin
+        if (lastBetMessageId) {
+            try {
+                const oldMsg = await betChan.messages.fetch(lastBetMessageId);
+                if (oldMsg) await oldMsg.delete();
+            } catch (e) { /* Tin nhắn đã bị xóa hoặc không tìm thấy */ }
+        }
+
+        const embed = new EmbedBuilder()
+            .setTitle("🏆 SÀN GIAO DỊCH VERDICT - ĐANG MỞ")
+            .setDescription("Chọn trận đấu bên dưới để xem tỷ lệ và đặt cược trực tiếp.")
+            .setColor("#2ecc71")
+            .setThumbnail("https://i.imgur.com/6Xw6kIn.png")
+            .setFooter({ text: "Hệ thống cập nhật tự động" })
+            .setTimestamp();
+
+        const menu = new StringSelectMenuBuilder()
+            .setCustomId('select_match_supreme')
+            .setPlaceholder('👉 Danh sách trận đấu đang mở cược...')
+            .addOptions(matches.map(m => ({
+                label: m.matchId,
+                description: `Hcap: ${m.hcap} | O/U: ${m.total}`,
+                value: m.matchId
+            })));
+
+        const newMsg = await betChan.send({ 
+            content: "🔥 **THÔNG BÁO:** Sàn cược đã cập nhật trận đấu mới!", 
+            embeds: [embed], 
+            components: [new ActionRowBuilder().addComponents(menu)] 
+        });
+
+        lastBetMessageId = newMsg.id;
+    } catch (error) {
+        console.error("❌ Lỗi gửi bảng kèo tự động:", error);
+    }
+}
+
+// 1. ĐỒNG BỘ API & TỰ ĐỘNG GỬI
+async function globalSync() {
     try {
         const res = await fetch('https://api.football-data.org/v4/matches', {
             headers: { 'X-Auth-Token': process.env.FOOTBALL_DATA_API_KEY }
@@ -29,11 +73,7 @@ async function syncMatchesFromAPI() {
         const data = await res.json();
         if (!data.matches) return;
 
-        // Lọc trận thuộc Ngoại hạng Anh (PL) và La Liga (PD)
-        const currentMatches = data.matches.filter(m => 
-            ['PL', 'PD'].includes(m.competition.code) &&
-            (VALID_TEAMS.includes(m.homeTeam.name.toUpperCase()) || VALID_TEAMS.includes(m.awayTeam.name.toUpperCase()))
-        );
+        const currentMatches = data.matches.filter(m => ['PL', 'PD'].includes(m.competition.code));
 
         for (const m of currentMatches) {
             const matchName = `${m.homeTeam.shortName} vs ${m.awayTeam.shortName}`.toUpperCase();
@@ -43,89 +83,77 @@ async function syncMatchesFromAPI() {
                 create: { matchId: matchName, hcap: 0, total: 0, isLocked: false }
             });
         }
-        console.log(`✅ [API] Đã đồng bộ ${currentMatches.length} trận đấu mới.`);
+        // Mỗi lần đồng bộ xong, nếu có thay đổi thì gửi bảng kèo mới
+        await refreshBetBoard();
     } catch (e) { console.error("❌ Lỗi API:", e); }
 }
 
-// Chạy đồng bộ mỗi 6 tiếng
-setInterval(syncMatchesFromAPI, 6 * 60 * 60 * 1000);
+setInterval(globalSync, 30 * 60 * 1000); // 30p quét 1 lần
 
-client.on('ready', () => {
-    console.log(`✨ [VERDICT] Bot Online: ${client.user.tag}`);
-    syncMatchesFromAPI();
+client.on('ready', async () => {
+    console.log(`🚀 BOT ONLINE: ${client.user.tag}`);
+    await globalSync();
 });
 
-// --- 2. XỬ LÝ TIN NHẮN ---
+// --- 2. XỬ LÝ LỆNH ---
 client.on('messageCreate', async (msg) => {
     if (msg.author.bot || !msg.guild) return;
     const args = msg.content.trim().split(/\s+/);
     const command = args[0].toLowerCase();
     const isAdmin = msg.member.roles.cache.has(ADMIN_ROLE_ID);
 
-    // Chặn cược tại kênh Live
-    if (msg.channel.id === LIVE_CHANNEL_ID && (command === '!keo' || command === '!cado')) {
-        return msg.reply("🚫 **Vui lòng sang kênh <#1474793205299155135> để đặt cược!**").then(m => setTimeout(() => { m.delete(); msg.delete(); }, 5000));
-    }
-
-    // LỆNH ADMIN: SET KÈO (Dành cho các trận đã sync từ API)
+    // Admin set Odds xong bot sẽ tự động gửi bảng kèo mới vào kênh BET
     if (command === '!setodds' && isAdmin) {
-        const matchId = args.slice(1, args.length - 2).join(" ").toUpperCase();
         const hcap = parseFloat(args[args.length - 2]);
         const total = parseFloat(args[args.length - 1]);
+        const matchId = args.slice(1, args.length - 2).join(" ").toUpperCase();
 
-        if (!matchId || isNaN(hcap)) return msg.reply("⚠️ **HD:** `!setodds [Tên Trận] [Hcap] [Total]`\n*Ví dụ: !setodds ARS VS MCI 0.5 2.5*");
-
-        const match = await prisma.matchConfig.update({
+        const updated = await prisma.matchConfig.update({
             where: { matchId: matchId },
             data: { hcap, total, isLocked: false }
         }).catch(() => null);
 
-        if (!match) return msg.reply("❌ Không tìm thấy trận đấu này. Dùng `!list` để xem danh sách.");
+        if (!updated) return msg.reply("❌ Trận này không có trong danh sách!");
 
-        const embed = new EmbedBuilder()
-            .setAuthor({ name: 'VERDICT ODDS UPDATE', iconURL: 'https://i.imgur.com/vP6pX6S.png' })
+        // Gửi Live
+        const liveEmbed = new EmbedBuilder()
             .setTitle(`🏟️ ${matchId}`)
-            .addFields(
-                { name: '⚖️ Handicap', value: `\`${hcap}\``, inline: true },
-                { name: '🏟️ Over/Under', value: `\`${total}\``, inline: true }
-            )
-            .setColor("#f1c40f")
-            .setFooter({ text: "Sang kênh đặt cược để vào lệnh!" });
+            .addFields({ name: '⚖️ Handicap', value: `**${hcap}**`, inline: true }, { name: '🏟️ O/U', value: `**${total}**`, inline: true })
+            .setColor("#f1c40f");
+        client.channels.cache.get(LIVE_CHANNEL_ID).send({ content: "@everyone Kèo mới!", embeds: [liveEmbed] });
 
-        client.channels.cache.get(LIVE_CHANNEL_ID).send({ content: "@everyone", embeds: [embed] });
-        msg.reply("✅ Đã lên kèo thành công!");
+        msg.reply("✅ Đã set odds. Bảng kèo tại <#1474793205299155135> sẽ tự cập nhật!");
+        
+        // CẬP NHẬT LUÔN BẢNG KÈO Ở KÊNH BET
+        await refreshBetBoard();
     }
-
-    // LỆNH NGƯỜI CHƠI: XEM KÈO
-    if ((command === '!keo' || command === '!cado') && msg.channel.id === BET_CHANNEL_ID) {
-        const matches = await prisma.matchConfig.findMany({ where: { isLocked: false, hcap: { not: 0 } } });
-        if (matches.length === 0) return msg.reply("❌ Hiện tại chưa có trận nào mở kèo.");
-
-        const menu = new StringSelectMenuBuilder()
-            .setCustomId('select_match')
-            .setPlaceholder('👉 Chọn trận đấu để đặt cược...')
-            .addOptions(matches.map(m => ({ label: m.matchId, description: `Hcap: ${m.hcap} | O/U: ${m.total}`, value: m.matchId })));
-
-        msg.reply({ content: "🏆 **SÀN GIAO DỊCH VERDICT**", components: [new ActionRowBuilder().addComponents(menu)] });
+    
+    // Vẫn giữ lệnh !keo dự phòng
+    if (command === '!keo' && msg.channel.id === BET_CHANNEL_ID) {
+        await refreshBetBoard();
+        msg.delete().catch(() => {});
     }
 });
 
-// --- 3. XỬ LÝ TƯƠNG TÁC ---
+// --- 3. XỬ LÝ TƯƠNG TÁC (BUTTON/MENU) ---
 client.on('interactionCreate', async (interaction) => {
     if (interaction.channelId !== BET_CHANNEL_ID) return;
 
-    if (interaction.isStringSelectMenu() && interaction.customId === 'select_match') {
+    if (interaction.isStringSelectMenu() && interaction.customId === 'select_match_supreme') {
         const mId = interaction.values[0];
+        const match = await prisma.matchConfig.findUnique({ where: { matchId: mId } });
+
         const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId(`bet_HOME_${mId}`).setLabel('CƯỢC HOME').setStyle(ButtonStyle.Primary),
-            new ButtonBuilder().setCustomId(`bet_AWAY_${mId}`).setLabel('CƯỢC AWAY').setStyle(ButtonStyle.Danger)
+            new ButtonBuilder().setCustomId(`bet_HOME_${mId}`).setLabel(`HOME (${match.hcap})`).setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId(`bet_AWAY_${mId}`).setLabel('AWAY').setStyle(ButtonStyle.Danger)
         );
-        await interaction.reply({ content: `🏟️ Trận: **${mId}** - Chọn cửa:`, components: [row], ephemeral: true });
+        
+        await interaction.reply({ content: `🏟️ **${mId}** - Tài Xỉu: **${match.total}**`, components: [row], ephemeral: true });
     }
 
     if (interaction.isButton() && interaction.customId.startsWith('bet_')) {
         const [_, side, mId] = interaction.customId.split('_');
-        await interaction.reply({ content: `💰 Nhập số tiền cược vào chat (Ví dụ: 5000):`, ephemeral: true });
+        await interaction.reply({ content: `💰 Nhập số tiền cược vào chat:`, ephemeral: true });
 
         const filter = m => m.author.id === interaction.user.id && !isNaN(m.content);
         const col = interaction.channel.createMessageCollector({ filter, time: 20000, max: 1 });
@@ -133,18 +161,18 @@ client.on('interactionCreate', async (interaction) => {
         col.on('collect', async (m) => {
             const amt = parseInt(m.content);
             const user = await prisma.user.findUnique({ where: { discordId: interaction.user.id } });
-            if (!user || user.balance < amt) return m.reply("❌ Số dư không đủ!");
+            if (!user || user.balance < amt) return m.reply("❌ Không đủ tiền!");
 
             await prisma.$transaction([
                 prisma.user.update({ where: { discordId: interaction.user.id }, data: { balance: { decrement: amt } } }),
                 prisma.bet.create({ data: { discordId: interaction.user.id, matchId: mId, choice: side, amount: amt } })
             ]);
 
-            m.reply(`✅ Đã cược **${amt.toLocaleString()} VC** cho **${side}**!`);
+            m.reply(`✅ Cược thành công **${amt.toLocaleString()} VC** cho **${side}**.`);
             client.channels.cache.get(LIVE_CHANNEL_ID).send(`🔥 **${interaction.user.username}** vừa vào **${amt.toLocaleString()} VC** - Trận \`${mId}\` (${side})`);
-            if (m.deletable) m.delete();
+            if (m.deletable) m.delete().catch(() => {});
         });
     }
 });
 
-client.login(process.env.DISCORD_TOKEN);
+client.login(process.env.DISCORD_TOKEN_CADO);
