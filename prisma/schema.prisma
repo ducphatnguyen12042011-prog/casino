@@ -4,20 +4,19 @@ datasource db {
 }
 
 generator client {
-  provider = "prisma-client-api"
+  provider = "prisma-client-js"
 }
 
 model User {
-  id        String   @id // Discord ID
-  balance   BigInt   @default(0)
-  profit    BigInt   @default(0)
-  lastTrans DateTime @updatedAt
+  id      String @id
+  balance BigInt @default(5000)
+  profit  BigInt @default(0)
 }
 
-model Bet {
-  id        Int      @id @default(autoincrement())
-  userId    String
-  amount    BigInt
-  type      String   // 'tai', 'xiu', 'bongda'
-  status    String   // 'pending', 'win', 'lose'
+model Match {
+  id        String   @id
+  homeTeam  String
+  awayTeam  String
+  startTime DateTime
+  status    String   @default("open") // open, live, closed
 }
