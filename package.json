@@ -1,14 +1,18 @@
 {
   "name": "verdict-bot",
   "version": "1.0.0",
-  "type": "module",
+  "description": "Hệ thống cá độ và kinh tế Discord",
+  "main": "src/index.js",
   "scripts": {
-    "start": "npx prisma generate && node index.js"
+    "start": "npx prisma generate && node src/index.js"
   },
   "dependencies": {
-    "@prisma/client": "^5.10.2",
-    "discord.js": "^14.14.1",
-    "dotenv": "^16.4.5",
-    "prisma": "^5.10.2"
+    "discord.js": "^14.13.0",
+    "@prisma/client": "^5.0.0",
+    "axios": "^1.5.0",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "prisma": "^5.0.0"
   }
 }
