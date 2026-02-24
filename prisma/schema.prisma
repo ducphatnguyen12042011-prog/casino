@@ -1,11 +1,10 @@
-// prisma/schema.prisma
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "mysql"
-  // url = env("DATABASE_URL") <-- XÓA HOẶC COMMENT DÒNG NÀY ĐỂ HẾT LỖI P1012
+  url      = "mysql://root:root@localhost:3306/mydb" // Dán dòng này vào, kệ nó, Railway sẽ tự thay thế sau
 }
 
 model User {
