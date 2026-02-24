@@ -1,59 +1,44 @@
-// Cấu hình kết nối Database
-datasource db {
-  provider = "mysql"
-  url      = env("DATABASE_URL")
-}
+// prisma/schema.prisma
 
 generator client {
   provider = "prisma-client-js"
 }
 
-// 👤 MODEL NGƯỜI DÙNG
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
 model User {
-  id        String   @id @default(uuid())
-  discordId String   @unique
-  balance   Int      @default(5000)   // Số dư hiện tại
-  profit    Int      @default(0)      // Tổng tiền lãi từ cược
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Quan hệ: Một người dùng có nhiều vé cược
+  discordId String   @id @unique
+  balance   Int      @default(0)
   bets      Bet[]
+  transactions Transaction[]
 }
 
-// 📜 MODEL LỊCH SỬ GIAO DỊCH
-model Transaction {
-  id        String   @id @default(uuid())
-  userId    String   
-  type      String   // Các loại: NAP, TRU, CHUYEN, NHAN, THANG, THUA
-  amount    Int      
-  reason    String?  @db.VarChar(500)
-  createdAt DateTime @default(now())
-
-  @@index([userId])
-}
-
-// ⚽ MODEL VÉ CƯỢC (Dùng cho Auto trả thưởng)
-model Bet {
-  id        String   @id @default(uuid())
-  amount    Int      // Số tiền cược
-  choice    String   // Lựa chọn: HOME hoặc AWAY
-  status    String   @default("PENDING") // Trạng thái: PENDING, WIN, LOSS
-  matchId   String?  // ID trận đấu để đối soát kết quả
-  createdAt DateTime @default(now())
-
-  // Quan hệ với model User
-  user      User     @relation(fields: [discordId], references: [discordId])
-  discordId String
-
-  @@index([discordId])
-}
-
-// ⚙️ MODEL CẤU HÌNH TRẬN ĐẤU (Nếu cần mở rộng)
 model MatchConfig {
-  id        String   @id @default(uuid())
-  matchId   String   @unique
-  hcap      Float    @default(0.5)
-  isLocked  Boolean  @default(false)
-  updatedAt DateTime @updatedAt
+  matchId  String  @id @unique
+  hcap     Float   @default(0)
+  total    Float   @default(0)
+  isLocked Boolean @default(false)
+}
+
+model Bet {
+  id          Int      @id @default(autoincrement())
+  discordId   String
+  matchId     String
+  choice      String   // HOME, AWAY, OVER, UNDER, TAI, XIU
+  amount      Int
+  isProcessed Boolean  @default(false)
+  user        User     @relation(fields: [discordId], references: [discordId])
+}
+
+model Transaction {
+  id        Int      @id @default(autoincrement())
+  userId    String
+  type      String   // CONG, TRU
+  amount    Int
+  reason    String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [discordId])
 }
