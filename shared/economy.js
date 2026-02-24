@@ -1,38 +1,26 @@
-// shared/economy.js
-import { PrismaClient } from '@prisma/client';
+const { EmbedBuilder } = require('discord.js');
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
 
-// Khởi tạo Prisma và truyền URL từ Railway hệ thống
-export const prisma = new PrismaClient({
-  datasources: {
-    db: {
-      url: process.env.DATABASE_URL,
-    },
-  },
-});
+async function showWallet(interaction, targetUser) {
+    const user = await prisma.user.findUnique({ where: { id: targetUser.id } });
+    const balance = user ? user.balance.toString() : "0";
+    const profit = user ? user.profit.toString() : "0";
 
-export async function getBalance(userId) {
-  try {
-    const user = await prisma.user.upsert({
-      where: { discordId: userId },
-      update: {},
-      create: { discordId: userId, balance: 5000 }
-    });
-    return user.balance;
-  } catch (error) {
-    console.error("❌ Lỗi Ví:", error);
-    return 0;
-  }
+    const embed = new EmbedBuilder()
+        .setTitle("VERDICT DIGITAL BANKING")
+        .setThumbnail(targetUser.displayAvatarURL())
+        .setColor("#00FFFF")
+        .addFields(
+            { name: "💳 CHỦ THẺ:", value: `**${targetUser.username.toUpperCase()}**` },
+            { name: "💵 SỐ DƯ", value: `**${balance} Verdict Cash**` },
+            { name: "📈 TIỀN LỜI", value: `**${profit} VC**`, inline: true },
+            { name: "🏛️ TRẠNG THÁI", value: "`Hoạt động`", inline: true }
+        )
+        .setFooter({ text: "Hệ thống bảo mật Verdict MySQL" })
+        .setTimestamp();
+
+    return interaction.reply({ embeds: [embed] });
 }
 
-export async function updateBalance(userId, amount) {
-  try {
-    return await prisma.user.upsert({
-      where: { discordId: userId },
-      update: { balance: { increment: amount } },
-      create: { discordId: userId, balance: 5000 + amount }
-    });
-  } catch (error) {
-    console.error("❌ Lỗi cập nhật Ví:", error);
-    throw error;
-  }
-}
+module.exports = { showWallet };
