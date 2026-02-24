@@ -18,12 +18,11 @@ const PREFIX = "!";
 client.once('ready', async () => {
     console.log(`✅ Bot ${client.user.tag} đã sẵn sàng!`);
 
-    // --- TỰ ĐỘNG HÓA BÓNG ĐÁ ---
-    const botCado = require('./share/bot_cado.js');
+    // GỌI BOT CADO (File nằm ở thư mục gốc theo ảnh của bạn)
+    const botCado = require('./bot_cado.js'); 
     
-    // Cứ mỗi 5 phút quét API một lần để kiểm tra trận đấu
+    // Tự động quét API mỗi 5 phút
     cron.schedule('*/5 * * * *', () => {
-        console.log("⚽ Đang quét dữ liệu bóng đá...");
         botCado.autoUpdate(client, prisma); 
     });
 });
@@ -35,25 +34,28 @@ client.on('messageCreate', async (message) => {
     const command = args.shift().toLowerCase();
 
     try {
-        // Module Tài Xỉu
+        // --- CÁC FILE Ở THƯ MỤC GỐC ---
         if (command === 'tx') {
-            await require('./share/bot_taixiu.js')(message, args, prisma);
+            await require('./bot_taixiu.js')(message, args, prisma);
         } 
-        // Module Ví & Admin (nạp, ví, chuyển, xemvi)
-        else if (['vi', 'chuyen', 'nap', 'xemvi'].includes(command)) {
-            await require('./share/bot_admin.js')(message, args, prisma, ADMIN_ID);
-        } 
-        // Module Bảng Xếp Hạng
-        else if (command === 'bxh') {
-            await require('./share/bot_bxh.js')(message, prisma);
+        else if (command === 'cado' || command === 'keo') {
+            await require('./bot_cado.js').showMenu(message, prisma);
         }
-        // Module Cá Độ (Lệnh xem danh sách trận đấu đang có kèo)
-        else if (command === 'bongda' || command === 'keo') {
-            await require('./share/bot_cado.js').showAvailableBets(message, prisma);
+        else if (['vi', 'chuyen', 'nap', 'xemvi'].includes(command)) {
+            // File bot_admin.js cũng ở thư mục gốc
+            await require('./bot_admin.js')(message, args, prisma, ADMIN_ID);
+        }
+        else if (command === 'bxh') {
+            await require('./bot_bxh.js')(message, prisma);
+        }
+        
+        // --- FILE Ở THƯ MỤC SHARE ---
+        if (command === 'share') {
+            await require('./share/share.js')(message, args, prisma);
         }
 
     } catch (err) {
-        console.error("Lỗi điều hướng lệnh:", err);
+        console.error("Lỗi hệ thống:", err);
     }
 });
 
